@@ -45,7 +45,7 @@ Driver::Driver(opt::InputArgList &args,
     gccToolchainDir_ = arg->getValue();
 
   // Establish executable path and installation dir.
-  executablePath_ = argv0;
+  executablePath_ = llvm::sys::fs::getMainExecutable(argv0, nullptr);
   // Do a PATH lookup if argv0 is not a valid path.
   if (!llvm::sys::fs::exists(executablePath_)) {
     if (llvm::ErrorOr<std::string> path =
