@@ -708,6 +708,7 @@ Gogo::init_imports(std::vector<Bstatement*>& init_stmts, Bfunction *bfunction)
     return;
 
   Location unknown_loc = Linemap::unknown_location();
+  Location builtin_loc = Linemap::predeclared_location();
   Function_type* func_type =
       Type::make_function_type(NULL, NULL, NULL, unknown_loc);
   Btype* fntype = func_type->get_backend_fntype(this);
@@ -750,9 +751,8 @@ Gogo::init_imports(std::vector<Bstatement*>& init_stmts, Bfunction *bfunction)
 						   flags, unknown_loc);
       Bexpression* pfunc_code =
           this->backend()->function_code_expression(pfunc, unknown_loc);
-      Bexpression* pfunc_call =
-          this->backend()->call_expression(bfunction, pfunc_code, empty_args,
-                                           NULL, unknown_loc);
+      Bexpression* pfunc_call = this->backend()->call_expression(
+	  bfunction, pfunc_code, empty_args, NULL, builtin_loc);
       init_stmts.push_back(this->backend()->expression_statement(bfunction,
                                                                  pfunc_call));
     }
