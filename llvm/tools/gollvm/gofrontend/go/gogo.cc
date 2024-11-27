@@ -426,7 +426,6 @@ Gogo::import_package(const std::string& filename,
       go_error_at(location, "import path is empty");
       return;
     }
-
   const char *pf = filename.data();
   const char *pend = pf + filename.length();
   while (pf < pend)
@@ -1067,10 +1066,6 @@ Named_object*
 Gogo::create_initialization_function(Named_object* initfn,
 				     Bstatement* code_stmt)
 {
-  // Make sure that we thought we needed an initialization function,
-  // as otherwise we will not have reported it in the export data.
-  go_assert(this->is_main_package() || this->need_init_fn_);
-
   if (initfn == NULL)
     initfn = this->initialization_function_decl();
 
@@ -1762,13 +1757,9 @@ Gogo::write_globals()
   // Set up a magic function to do all the initialization actions.
   // This will be called if this package is imported.
   Bstatement* init_fncode = this->backend()->statement_list(init_stmts);
-  if (this->need_init_fn_ || this->is_main_package())
-    {
-      init_fndecl =
-	this->create_initialization_function(init_fndecl, init_fncode);
-      if (init_fndecl != NULL)
-	func_decls.push_back(init_fndecl->func_value()->get_decl());
-    }
+  init_fndecl = this->create_initialization_function(init_fndecl, init_fncode);
+  if (init_fndecl != NULL)
+    func_decls.push_back(init_fndecl->func_value()->get_decl());
 
   // We should not have seen any new bindings created during the conversion.
   go_assert(count_definitions == this->current_bindings()->size_definitions());
@@ -6353,7 +6344,10 @@ Function::get_or_make_decl(Gogo* gogo, Named_object* no)
                && !this->type_->is_method())
 	;
       else if (no->name() == gogo->get_init_fn_name())
-	flags |= Backend::function_is_visible;
+	{
+	  if (gogo->need_init_fn() || gogo->is_main_package())
+	    flags |= Backend::function_is_visible;
+	}
       else if (Gogo::unpack_hidden_name(no->name()) == "main"
                && gogo->is_main_package())
 	flags |= Backend::function_is_visible;
