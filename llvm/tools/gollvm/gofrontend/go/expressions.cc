@@ -10843,7 +10843,16 @@ Builtin_call_expression::do_numeric_constant_value(Numeric_constant* nc)
 
       Field_reference_expression* farg = arg->field_reference_expression();
       if (farg == NULL)
-	return false;
+	{
+	  if (arg->classification() != EXPRESSION_SELECTOR)
+	    return false;
+	  auto* sel = static_cast<Selector_expression*>(arg);
+	  if (sel->resolved() == NULL)
+	    return false;
+	  farg = sel->resolved()->field_reference_expression();
+	  if (farg == NULL)
+	    return false;
+	}
       if (this->seen_)
         return false;
 
