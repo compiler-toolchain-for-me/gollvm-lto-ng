@@ -915,6 +915,24 @@ Import::import_var()
 // THIS->PACKAGE_, but it will be different for a method associated
 // with a type defined in a different package.
 
+static bool
+type_lists_match(const Typed_identifier_list* l1,
+		 const Typed_identifier_list* l2)
+{
+  if (l1 == l2)
+    return true;
+  if (l1 == NULL || l2 == NULL || l1->size() != l2->size())
+    return false;
+  for (size_t i = 0; i < l1->size(); ++i)
+    {
+      const Typed_identifier& tid1 = l1->at(i);
+      const Typed_identifier& tid2 = l2->at(i);
+      if (tid1.name() != tid2.name())
+	return false;
+    }
+  return true;
+}
+
 void
 Import::import_func(Package* package)
 {
@@ -981,7 +999,14 @@ Import::import_func(Package* package)
   if (!asm_name.empty())
     no->func_declaration_value()->set_asm_name(asm_name);
   if (!body.empty() && !no->func_declaration_value()->has_imported_body())
-    no->func_declaration_value()->set_imported_body(this, body);
+    {
+      Function_type* real_fntype = no->func_declaration_value()->type();
+      if (type_lists_match(real_fntype->parameters(), fntype->parameters())
+	  && type_lists_match(real_fntype->results(), fntype->results()))
+	{
+	  no->func_declaration_value()->set_imported_body(this, body);
+	}
+    }
 }
 
 // Read a type definition and initialize the entry in this->types_.
