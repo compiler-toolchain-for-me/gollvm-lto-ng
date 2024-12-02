@@ -509,7 +509,8 @@ list(APPEND runtimecfiles
   "go/sync/atomic/atomic.c"
   "go/syscall/errno.c"
   "go/syscall/signame.c"
-  "go/syscall/wait.c")
+  "go/syscall/wait.c"
+  "go/golang.org/x/sys/unix/gccgo_c.c")
 
 if (NOT ${goarch} STREQUAL "arm64")
   list(APPEND runtimecfiles

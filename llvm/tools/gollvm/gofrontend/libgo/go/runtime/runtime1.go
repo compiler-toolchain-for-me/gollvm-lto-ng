@@ -496,3 +496,13 @@ func releasem(mp *m) {
 	//	_g_.stackguard0 = stackPreempt
 	// }
 }
+
+//go:linkname reflect_typelinks reflect.typelinks
+func reflect_typelinks() ([]unsafe.Pointer, [][]int32) {
+	panic("not implemented")
+}
+
+//go:linkname reflect_resolveTypeOff reflect.resolveTypeOff
+func reflect_resolveTypeOff(rtype unsafe.Pointer, off int32) unsafe.Pointer {
+	panic("not implemented")
+}

@@ -1297,6 +1297,11 @@ func reflect_unsafe_New(typ *_type) unsafe.Pointer {
 	return mallocgc(typ.size, typ, true)
 }
 
+//go:linkname go_reflect_unsafe_New reflect.unsafe_New
+func go_reflect_unsafe_New(typ *_type) unsafe.Pointer {
+	return mallocgc(typ.size, typ, true)
+}
+
 //go:linkname reflectlite_unsafe_New internal_1reflectlite.unsafe__New
 func reflectlite_unsafe_New(typ *_type) unsafe.Pointer {
 	return mallocgc(typ.size, typ, true)
@@ -1316,6 +1321,11 @@ func newarray(typ *_type, n int) unsafe.Pointer {
 
 //go:linkname reflect_unsafe_NewArray reflect.unsafe__NewArray
 func reflect_unsafe_NewArray(typ *_type, n int) unsafe.Pointer {
+	return newarray(typ, n)
+}
+
+//go:linkname go_reflect_unsafe_NewArray reflect.unsafe_NewArray
+func go_reflect_unsafe_NewArray(typ *_type, n int) unsafe.Pointer {
 	return newarray(typ, n)
 }
 
