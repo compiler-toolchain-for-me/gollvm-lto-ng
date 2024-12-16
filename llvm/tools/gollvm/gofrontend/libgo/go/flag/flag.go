@@ -1077,3 +1077,26 @@ func (f *FlagSet) Init(name string, errorHandling ErrorHandling) {
 	f.name = name
 	f.errorHandling = errorHandling
 }
+
+// -- boolFunc Value
+type boolFuncValue func(string) error
+
+func (f boolFuncValue) Set(s string) error { return f(s) }
+
+func (f boolFuncValue) String() string { return "" }
+
+func (f boolFuncValue) IsBoolFlag() bool { return true }
+
+// BoolFunc defines a flag with the specified name and usage string without requiring values.
+// Each time the flag is seen, fn is called with the value of the flag.
+// If fn returns a non-nil error, it will be treated as a flag value parsing error.
+func (f *FlagSet) BoolFunc(name, usage string, fn func(string) error) {
+        f.Var(boolFuncValue(fn), name, usage)
+}
+
+// BoolFunc defines a flag with the specified name and usage string without requiring values.
+// Each time the flag is seen, fn is called with the value of the flag.
+// If fn returns a non-nil error, it will be treated as a flag value parsing error.
+func BoolFunc(name, usage string, fn func(string) error) {
+        CommandLine.BoolFunc(name, usage, fn)
+}
