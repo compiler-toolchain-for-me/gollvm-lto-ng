@@ -1,0 +1,39 @@
+# This directory is where cmake will drop downloaded tar files
+# for the gofrontend deps (GMP, MPCR, etc)
+external/
+
+# Compiled Object files
+*.slo
+*.lo
+*.o
+*.obj
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Compiled Dynamic libraries
+*.so
+*.dylib
+*.dll
+
+# Fortran module files
+*.mod
+*.smod
+
+# Compiled Static libraries
+*.lai
+*.la
+*.a
+*.lib
+
+# Compiled python files
+*.pyc
+
+# Executables
+*.exe
+*.out
+*.app
+
+# Emacs autosave files
+*~
