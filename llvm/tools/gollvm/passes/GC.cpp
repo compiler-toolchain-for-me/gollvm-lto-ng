@@ -44,7 +44,7 @@ public:
     // TODO: write barrier?
   }
 
-  Optional<bool> isGCManagedPointer(const Type *Ty) const override {
+  std::optional<bool> isGCManagedPointer(const Type *Ty) const override {
     return isa<PointerType>(Ty);
   }
 };
@@ -171,7 +171,7 @@ emitCallsiteEntries(StackMaps &SM, MCStreamer &OS) {
       for (uint8_t Byte : V)
         OS.emitIntValue(Byte, 1);
     }
-    OS.emitValueToAlignment(8);
+    OS.emitValueToAlignment(llvm::Align(8));
   }
 }
 
@@ -183,7 +183,7 @@ GoGCPrinter::emitStackMaps(StackMaps &SM, AsmPrinter &AP) {
   // Create the section.
   MCSection *StackMapSection =
       OutContext.getObjectFileInfo()->getStackMapSection();
-  OS.SwitchSection(StackMapSection);
+  OS.switchSection(StackMapSection);
 
   emitCallsiteEntries(SM, OS);
 

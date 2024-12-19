@@ -13,9 +13,9 @@
 #ifndef GOLLVM_DRIVER_TOOL_H
 #define GOLLVM_DRIVER_TOOL_H
 
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/Triple.h"
 #include "Artifact.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/TargetParser/Triple.h"
 
 namespace gollvm {
 namespace driver {

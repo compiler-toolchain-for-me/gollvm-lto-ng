@@ -14,7 +14,7 @@
 #define GOLLVM_DRIVER_DISTRO_H
 
 #include "GccUtils.h"
-#include "llvm/ADT/Triple.h"
+#include "llvm/TargetParser/Triple.h"
 
 namespace distro {
 

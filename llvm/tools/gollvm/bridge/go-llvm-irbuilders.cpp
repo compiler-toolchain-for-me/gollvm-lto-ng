@@ -25,14 +25,14 @@ BlockLIRBuilder::BlockLIRBuilder(llvm::Function *dummyFcn,
 
 BlockLIRBuilder::~BlockLIRBuilder()
 {
-  assert(dummyBlock_->getInstList().empty());
+  assert(dummyBlock_->empty());
   dummyBlock_->removeFromParent();
 }
 
 std::vector<llvm::Instruction*> BlockLIRBuilder::instructions()
 {
   std::vector<llvm::Instruction*> rv;
-  for (auto &i : dummyBlock_->getInstList())
+  for (auto &i : *dummyBlock_)
     rv.push_back(&i);
   for (auto &i : rv) {
     i->removeFromParent();

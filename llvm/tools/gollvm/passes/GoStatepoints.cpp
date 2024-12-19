@@ -22,8 +22,6 @@
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/MapVector.h"
-#include "llvm/ADT/None.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallSet.h"
@@ -34,6 +32,7 @@
 #include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/Analysis/TargetTransformInfo.h"
 #include "llvm/IR/Argument.h"
+#include "llvm/IR/AttributeMask.h"
 #include "llvm/IR/Attributes.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Constant.h"
@@ -58,8 +57,8 @@
 #include "llvm/IR/User.h"
 #include "llvm/IR/Value.h"
 #include "llvm/IR/ValueHandle.h"
-#include "llvm/Pass.h"
 #include "llvm/InitializePasses.h"
+#include "llvm/Pass.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Compiler.h"
@@ -119,6 +118,29 @@ static uint64_t ID = 0;
 static void stripNonValidData(Module &M);
 
 static bool shouldRewriteStatepointsIn(Function &F);
+
+static Type *getPointerElementType(Value *V) {
+  assert(V->getType()->isPointerTy());
+  if (Argument *A = dyn_cast<Argument>(V)) {
+    if (A->hasByValAttr())
+      return A->getParamByValType();
+    // FIXME: Do we need to handle other types of arguments?
+    // fallback to ptr
+    return V->getType();
+
+  } else if (AllocaInst *AI = dyn_cast<AllocaInst>(V)) {
+    return AI->getAllocatedType();
+  } else if (GetElementPtrInst *GEP = dyn_cast<GetElementPtrInst>(V)) {
+    return GEP->getResultElementType();
+  } else if (ConstantExpr *CE = dyn_cast<ConstantExpr>(V)) {
+    return getPointerElementType(CE->getAsInstruction());
+  } else if (GlobalValue *GV = dyn_cast<GlobalValue>(V)) {
+    return GV->getValueType();
+  } else {
+    // fallback to ptr
+    return V->getType();
+  }
+}
 
 PreservedAnalyses GoStatepoints::run(Module &M,
                                      ModuleAnalysisManager &AM) {
@@ -993,8 +1015,9 @@ static Value *findBasePointer(Value *I, DefiningValueMapTy &Cache) {
       // TODO: In many cases, the new instruction is just EE itself.  We should
       // exploit this, but can't do it here since it would break the invariant
       // about the BDV not being known to be a base.
-      auto *BaseInst = ExtractElementInst::Create(
-          State.getBaseValue(), EE->getIndexOperand(), "base_ee", EE);
+      auto *BaseInst = ExtractElementInst::Create(State.getBaseValue(),
+                                                  EE->getIndexOperand(),
+                                                  "base_ee", EE->getIterator());
       BaseInst->setMetadata("is_base_value", MDNode::get(I->getContext(), {}));
       States[I] = BDVState(BDVState::Base, BaseInst);
     }
@@ -1015,29 +1038,30 @@ static Value *findBasePointer(Value *I, DefiningValueMapTy &Cache) {
         int NumPreds = pred_size(BB);
         assert(NumPreds > 0 && "how did we reach here");
         std::string Name = suffixed_name_or(I, ".base", "base_phi");
-        return PHINode::Create(I->getType(), NumPreds, Name, I);
+        return PHINode::Create(I->getType(), NumPreds, Name, I->getIterator());
       } else if (SelectInst *SI = dyn_cast<SelectInst>(I)) {
         // The undef will be replaced later
         UndefValue *Undef = UndefValue::get(SI->getType());
         std::string Name = suffixed_name_or(I, ".base", "base_select");
-        return SelectInst::Create(SI->getCondition(), Undef, Undef, Name, SI);
+        return SelectInst::Create(SI->getCondition(), Undef, Undef, Name,
+                                  SI->getIterator());
       } else if (auto *EE = dyn_cast<ExtractElementInst>(I)) {
         UndefValue *Undef = UndefValue::get(EE->getVectorOperand()->getType());
         std::string Name = suffixed_name_or(I, ".base", "base_ee");
         return ExtractElementInst::Create(Undef, EE->getIndexOperand(), Name,
-                                          EE);
+                                          EE->getIterator());
       } else if (auto *IE = dyn_cast<InsertElementInst>(I)) {
         UndefValue *VecUndef = UndefValue::get(IE->getOperand(0)->getType());
         UndefValue *ScalarUndef = UndefValue::get(IE->getOperand(1)->getType());
         std::string Name = suffixed_name_or(I, ".base", "base_ie");
-        return InsertElementInst::Create(VecUndef, ScalarUndef,
-                                         IE->getOperand(2), Name, IE);
+        return InsertElementInst::Create(
+            VecUndef, ScalarUndef, IE->getOperand(2), Name, IE->getIterator());
       } else {
         auto *SV = cast<ShuffleVectorInst>(I);
         UndefValue *VecUndef = UndefValue::get(SV->getOperand(0)->getType());
         std::string Name = suffixed_name_or(I, ".base", "base_sv");
         return new ShuffleVectorInst(VecUndef, VecUndef, SV->getOperand(2),
-                                     Name, SV);
+                                     Name, SV->getIterator());
       }
     };
     Instruction *BaseInst = MakeBaseInstPlaceholder(I);
@@ -1067,7 +1091,8 @@ static Value *findBasePointer(Value *I, DefiningValueMapTy &Cache) {
     assert(Base && "Can't be null");
     // The cast is needed since base traversal may strip away bitcasts
     if (Base->getType() != Input->getType() && InsertPt)
-      Base = CastInst::CreatePointerBitCastOrAddrSpaceCast(Base, Input->getType(), "cast", InsertPt);
+      Base = CastInst::CreatePointerBitCastOrAddrSpaceCast(
+          Base, Input->getType(), "cast", InsertPt->getIterator());
     return Base;
   };
 
@@ -1262,8 +1287,6 @@ normalizeForInvokeSafepoint(BasicBlock *BB, BasicBlock *InvokeParent,
 // both function declarations and call sites.
 static constexpr Attribute::AttrKind FnAttrsToStrip[] =
   {Attribute::ReadNone, Attribute::ReadOnly, Attribute::WriteOnly,
-   Attribute::ArgMemOnly, Attribute::InaccessibleMemOnly,
-   Attribute::InaccessibleMemOrArgMemOnly,
    Attribute::NoSync, Attribute::NoFree};
 
 // List of all parameter and return attributes which must be stripped when
@@ -1356,7 +1379,7 @@ public:
       // Note: we've inserted instructions, so the call to llvm.deoptimize may
       // not necessarily be followed by the matching return.
       auto *RI = cast<ReturnInst>(OldI->getParent()->getTerminator());
-      new UnreachableInst(RI->getContext(), RI);
+      new UnreachableInst(RI->getContext(), RI->getIterator());
       RI->eraseFromParent();
     }
 
@@ -1430,7 +1453,7 @@ makeStatepointExplicitImpl(CallBase *Call, /* to replace */
     if (isa<AllocaInst>(V) ||
         (isa<Argument>(V) && cast<Argument>(V)->hasByValAttr())) {
       // Byval argument is at a fixed frame offset. Treat it the same as alloca.
-      Type *T = cast<PointerType>(V->getType())->getElementType();
+      Type *T = getPointerElementType(V);
       if (hasPointer(T)) {
         PtrFields.push_back(V);
         getPtrBitmapForType(T, DL, PtrFields);
@@ -1627,8 +1650,9 @@ static void findLiveReferences(
   SetVector<Value *> AllAllocas;
   if (ClobberNonLive)
     for (Instruction &I : F.getEntryBlock())
-      if (isa<AllocaInst>(I) && hasPointer(I.getType()->getPointerElementType()))
-        AllAllocas.insert(&I);
+      if (AllocaInst *AI = dyn_cast<AllocaInst>(&I))
+        if (hasPointer(AI->getAllocatedType()))
+          AllAllocas.insert(&I);
 
   computeLiveInValues(DT, F, OriginalLivenessData, AddrTakenAllocas,
                       ToZero, BadLoads, DVCache);
@@ -1702,7 +1726,7 @@ zeroAmbiguouslyLiveSlots(Function &F, SetVector<Value *> &ToZero,
           } else if (ToZero.count(V) != 0) {
             // Non-addrtaken alloca. Just insert zeroing, keep the lifetime marker.
             IRBuilder<> Builder(I.getNextNode());
-            Value *Zero = Constant::getNullValue(V->getType()->getPointerElementType());
+            Value *Zero = Constant::getNullValue(getPointerElementType(V));
             Builder.CreateStore(Zero, V);
             // Don't remove V from ToZero for now, as there may be multiple
             // lifetime start markers, where we need to insert zeroing.
@@ -1737,14 +1761,14 @@ zeroAmbiguouslyLiveSlots(Function &F, SetVector<Value *> &ToZero,
   for (Instruction &I : F.getEntryBlock())
     if (ToZero.count(&I) != 0) {
       IRBuilder<> Builder(I.getNextNode());
-      Type *ElemTyp = I.getType()->getPointerElementType();
       if (AddrTakenAllocas.count(&I) != 0) {
+        Type *ElemTyp = cast<AllocaInst>(I).getAllocatedType();
         // For addrtaken alloca, we removed the lifetime marker above.
         // Insert a new one at the entry block.
         unsigned Size = DL.getTypeStoreSize(ElemTyp);
         Builder.CreateLifetimeStart(&I, ConstantInt::get(Int64Ty, Size));
       }
-      Value *Zero = Constant::getNullValue(ElemTyp);
+      Value *Zero = Constant::getNullValue(getPointerElementType(&I));
       Builder.CreateStore(Zero, &I);
       ToZero.remove(&I);
     }
@@ -1942,8 +1966,8 @@ static bool insertParsePoints(Function &F, DominatorTree &DT,
     // That Value* no longer exists and we need to use the new gc_result.
     // Thankfully, the live set is embedded in the statepoint (and updated), so
     // we just grab that.
-    Live.insert(Live.end(), Info.StatepointToken->gc_args_begin(),
-                Info.StatepointToken->gc_args_end());
+    Live.insert(Live.end(), Info.StatepointToken->gc_live_begin(),
+                Info.StatepointToken->gc_live_end());
 #ifndef NDEBUG
     // Do some basic sanity checks on our liveness results before performing
     // relocation.  Relocation can and will turn mistakes in liveness results
@@ -1951,7 +1975,7 @@ static bool insertParsePoints(Function &F, DominatorTree &DT,
     // TODO: It would be nice to test consistency as well
     assert(DT.isReachableFromEntry(Info.StatepointToken->getParent()) &&
            "statepoint must be reachable or liveness is meaningless");
-    for (Value *V : Info.StatepointToken->gc_args()) {
+    for (Value *V : Info.StatepointToken->gc_live()) {
       if (!isa<Instruction>(V))
         // Non-instruction values trivial dominate all possible uses
         continue;
@@ -2024,7 +2048,7 @@ static void stripNonValidAttributesFromPrototype(Function &F) {
   if (isa<PointerType>(F.getReturnType()))
     RemoveNonValidAttrAtIndex(Ctx, F, AttributeList::ReturnIndex);
 
-    for (auto Attr : FnAttrsToStrip)
+  for (auto Attr : FnAttrsToStrip)
     F.removeFnAttr(Attr);
 }
 
@@ -2161,11 +2185,12 @@ bool GoStatepoints::runOnFunction(Function &F, DominatorTree &DT,
       // Create a dummy landing pad block.
       LLVMContext &C = F.getContext();
       BasicBlock *PadBB = BasicBlock::Create(C, "dummy", &F);
-      Type *ExnTy = StructType::get(Type::getInt8PtrTy(C), Type::getInt32Ty(C));
+      Type *ExnTy =
+          StructType::get(PointerType::getUnqual(C), Type::getInt32Ty(C));
 
       LandingPadInst *LPad =
           LandingPadInst::Create(ExnTy, 1, "dummy.ex", PadBB);
-      LPad->addClause(Constant::getNullValue(Type::getInt8PtrTy(C)));
+      LPad->addClause(Constant::getNullValue(PointerType::getUnqual(C)));
       new UnreachableInst(PadBB->getContext(), PadBB);
 
       BasicBlock *Old = CI->getParent();
@@ -2179,7 +2204,7 @@ bool GoStatepoints::runOnFunction(Function &F, DominatorTree &DT,
       for (DomTreeNode *I : Children)
         DT.changeImmediateDominator(I, NewNode);
 
-      DTU.insertEdge(Old, PadBB);
+      DTU.applyUpdates({{DominatorTree::Insert, Old, PadBB}});
     }
   }
 
@@ -2269,10 +2294,11 @@ isAlloca(Value *V, DefiningValueMapTy &DVCache) {
 
 static Value*
 isTrackedAlloca(Value *V, DefiningValueMapTy &DVCache) {
-  Value *Base = isAlloca(V, DVCache);
-  if (Base &&
-      hasPointer(Base->getType()->getPointerElementType()))
-    return Base;
+  if (Value *Base = isAlloca(V, DVCache)) {
+    Type *AllocedTy = cast<AllocaInst>(Base)->getAllocatedType();
+    if (Base && hasPointer(AllocedTy))
+      return Base;
+  }
   return nullptr;
 }
 
@@ -2450,7 +2476,7 @@ determineAllocaAddrTaken(Function &F,
   // Use the metadata inserted by the FE.
   for (Instruction &I : F.getEntryBlock())
     if (isa<AllocaInst>(I) && I.getMetadata("go_addrtaken") &&
-        hasPointer(I.getType()->getPointerElementType()))
+        hasPointer(cast<AllocaInst>(I).getAllocatedType()))
       AddrTakenAllocas.insert(&I);
 
   // The FE's addrtaken mark may be imprecise. Look for certain
@@ -2581,7 +2607,7 @@ checkStoreSize(Value *V, BasicBlock &BB, const DataLayout &DL,
                SetVector<Value *> &ToZero,
                DefiningValueMapTy &DVCache) {
   unsigned PtrSize = DL.getPointerSize();
-  unsigned Size = DL.getTypeStoreSize(V->getType()->getPointerElementType());
+  unsigned Size = DL.getTypeStoreSize(cast<AllocaInst>(V)->getAllocatedType());
   if (Size <= PtrSize)
     return;
 
@@ -2597,7 +2623,8 @@ checkStoreSize(Value *V, BasicBlock &BB, const DataLayout &DL,
       if (hasStructRetAttr(CI)) {
         Value *Ptr = CI->getOperand(0);
         if (isTrackedAlloca(Ptr, DVCache) == V)
-          StoreSize += DL.getTypeStoreSize(Ptr->getType()->getPointerElementType());
+          StoreSize +=
+              DL.getTypeStoreSize(cast<AllocaInst>(Ptr)->getAllocatedType());
       }
       if (Function *Fn = CI->getCalledFunction())
         switch (Fn->getIntrinsicID()) {
@@ -2621,7 +2648,9 @@ checkStoreSize(Value *V, BasicBlock &BB, const DataLayout &DL,
       if (hasStructRetAttr(II)) {
         Value *Ptr = II->getOperand(0);
         if (isTrackedAlloca(Ptr, DVCache) == V)
-          if (DL.getTypeStoreSize(Ptr->getType()->getPointerElementType()) + PtrSize - 1 >= Size)
+          if (DL.getTypeStoreSize(cast<AllocaInst>(Ptr)->getAllocatedType()) +
+                  PtrSize - 1 >=
+              Size)
             // We are storing the whole type
             return;
 
@@ -2919,8 +2948,8 @@ static void findLiveSetAtInst(Instruction *Inst, GCPtrLivenessData &Data,
       Value *V = Ptr->stripPointerCasts();
       const DataLayout &DL = Inst->getModule()->getDataLayout();
       if (!Data.LiveIn[BB].count(V) &&
-          (DL.getTypeStoreSize(Ptr->getType()->getPointerElementType()) >=
-           DL.getTypeStoreSize(V->getType()->getPointerElementType())))
+          (DL.getTypeStoreSize(getPointerElementType(Ptr)) >=
+           DL.getTypeStoreSize(getPointerElementType(V))))
         LiveOut.remove(V);
     }
 
@@ -2935,7 +2964,7 @@ static void findLiveSetAtInst(Instruction *Inst, GCPtrLivenessData &Data,
       Value *Bad = ConstantInt::get(Int8Ty, 0xff);
       for (Value *Alloca : ToClobber) {
         unsigned Siz =
-            DL.getTypeStoreSize(Alloca->getType()->getPointerElementType());
+            DL.getTypeStoreSize(cast<AllocaInst>(Alloca)->getAllocatedType());
         Builder.CreateMemSet(Alloca, Bad, Siz, MaybeAlign(0));
         //dbgs() << "clobber " << *Alloca << " at " << *Inst << "\n";
       }
@@ -2962,7 +2991,7 @@ fixStackWriteBarriers(Function &F, DefiningValueMapTy &DVCache) {
   for (Instruction &I : instructions(F)) {
     if (auto *CI = dyn_cast<CallInst>(&I))
       if (Function *Callee = CI->getCalledFunction()) {
-        if (Callee->getName().equals("runtime.gcWriteBarrier")) {
+        if (Callee->getName() == "runtime.gcWriteBarrier") {
           // gcWriteBarrier(dst, val)
           // there is an extra "nest" argument.
           Value *Dst = CI->getArgOperand(1), *Val = CI->getArgOperand(2);
@@ -2974,7 +3003,7 @@ fixStackWriteBarriers(Function &F, DefiningValueMapTy &DVCache) {
                                       PointerType::get(Val->getType(), AS));
           Builder.CreateStore(Val, Dst);
           ToDel.insert(CI);
-        } else if (Callee->getName().equals("runtime.typedmemmove")) {
+        } else if (Callee->getName() == "runtime.typedmemmove") {
           // typedmemmove(typ, dst, src)
           // there is an extra "nest" argument.
           Value *Dst = CI->getArgOperand(2), *Src = CI->getArgOperand(3);
@@ -2986,7 +3015,7 @@ fixStackWriteBarriers(Function &F, DefiningValueMapTy &DVCache) {
           // for now. The size is the first field. The optimizer should be
           // able to constant-fold it.
           Value *TD = CI->getArgOperand(1);
-          Type *etyp = TD->getType()->getPointerElementType();
+          Type *etyp = cast<GlobalValue>(TD)->getValueType();
           Value *GEP = Builder.CreateConstInBoundsGEP2_32(
               etyp, TD, 0, 0);
           Value *Siz = Builder.CreateLoad(etyp, GEP);

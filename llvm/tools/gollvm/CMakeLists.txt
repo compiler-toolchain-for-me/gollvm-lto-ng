@@ -114,6 +114,16 @@ if (DISABLE_LIBGO_GOC_DEP)
   set(gocdep llvm-goc-token)
 endif()
 
+if(CXX_SUPPORTS_SUGGEST_OVERRIDE_FLAG)
+  add_definitions("-Wno-suggest-override")
+  set_target_properties(gollvm PROPERTIES INTERFACE_COMPILE_OPTIONS "-Wno-suggest-override")
+endif()
+
+if(CXX_SUPPORTS_COVERED_SWITCH_DEFAULT_FLAG)
+  add_definitions("-Wno-covered-switch-default")
+  set_target_properties(gollvm PROPERTIES INTERFACE_COMPILE_OPTIONS "-Wno-covered-switch-default")
+endif()
+
 # Root of gollvm source code.
 set(GOLLVM_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 

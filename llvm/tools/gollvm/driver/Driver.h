@@ -13,16 +13,15 @@
 #ifndef GOLLVM_DRIVER_DRIVER_H
 #define GOLLVM_DRIVER_DRIVER_H
 
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/ADT/Triple.h"
 #include "llvm/Option/ArgList.h"
 #include "llvm/Option/OptTable.h"
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetOptions.h"
+#include "llvm/TargetParser/Triple.h"
 
 #include "Action.h"
 #include "Artifact.h"
@@ -113,18 +112,18 @@ class Driver {
   bool supportedAsmOptions();
   bool determineDebugCompressionType(llvm::DebugCompressionType *dct);
   bool usingSplitStack() const { return usingSplitStack_; }
-  template<typename IT>
-  llvm::Optional<IT> getLastArgAsInteger(gollvm::options::ID id,
-                                         IT defaultValue);
-  llvm::Optional<llvm::Reloc::Model> reconcileRelocModel();
+  template <typename IT>
+  std::optional<IT> getLastArgAsInteger(gollvm::options::ID id,
+                                        IT defaultValue);
+  std::optional<llvm::Reloc::Model> reconcileRelocModel();
   bool reconcileOptionPair(gollvm::options::ID yesOption,
                            gollvm::options::ID noOption,
                            bool defaultVal);
-  llvm::Optional<std::string>
+  std::optional<std::string>
   reconcilePath(llvm::opt::OptSpecifier yesOpt,
                 llvm::opt::OptSpecifier yesWithPathOpt,
                 llvm::opt::OptSpecifier noOpt);
-  llvm::Optional<llvm::FPOpFusion::FPOpFusionMode> getFPOpFusionMode();
+  std::optional<llvm::FPOpFusion::FPOpFusionMode> getFPOpFusionMode();
   typedef llvm::SmallVector<llvm::opt::Arg *, 8> inarglist;
   void appendInputActions(const inarglist &infiles,
                           ActionList &result,
@@ -160,11 +159,9 @@ class Driver {
                                          const char *which);
 };
 
-template<typename IT>
-llvm::Optional<IT>
-Driver::getLastArgAsInteger(gollvm::options::ID id,
-                            IT defaultValue)
-{
+template <typename IT>
+std::optional<IT> Driver::getLastArgAsInteger(gollvm::options::ID id,
+                                              IT defaultValue) {
   IT result = defaultValue;
   llvm::opt::Arg *arg = args_.getLastArg(id);
   if (arg != nullptr) {
@@ -172,7 +169,7 @@ Driver::getLastArgAsInteger(gollvm::options::ID id,
       llvm::errs() << progname_ << ": invalid argument '"
                    << arg->getValue() << "' to '"
                    << arg->getAsString(args_) << "' option\n";
-      return llvm::None;
+      return {};
     }
   }
   return result;
