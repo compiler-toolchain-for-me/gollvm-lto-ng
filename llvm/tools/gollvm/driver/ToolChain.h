@@ -13,9 +13,9 @@
 #ifndef GOLLVM_DRIVER_TOOLCHAIN_H
 #define GOLLVM_DRIVER_TOOLCHAIN_H
 
-#include <string>
-#include "llvm/ADT/Triple.h"
 #include "llvm/Option/ArgList.h"
+#include "llvm/TargetParser/Triple.h"
+#include <string>
 
 #include "Action.h"
 #include "Tool.h"

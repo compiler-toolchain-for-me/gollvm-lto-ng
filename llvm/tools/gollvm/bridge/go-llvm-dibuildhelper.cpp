@@ -156,13 +156,7 @@ void DIBuildHelper::insertVarDecl(Bvariable *var,
   if(var->initializer() && !var->initializerInstruction()->getParent())
     return;
 
-  // Create the declare instruction, giving it an initial position at
-  // the end of the entry block (the insertDeclare call below doesn't
-  // allow a NULL insert location, so we pick end-of-block arbitrarily).
   assert(entryBlock_);
-  llvm::Instruction *decl =
-      dibuilder().insertDeclare(var->value(), dilv, expr, vloc, entryBlock_);
-  decl->removeFromParent();
 
   // Extract the decl from the end of the entry block and reposition
   // it according to the var properties.
@@ -173,7 +167,8 @@ void DIBuildHelper::insertVarDecl(Bvariable *var,
   } else if (var->flavor() == ParamVar) {
     // parameters passing by reference may have no initializers.
     // declare them at function entry.
-    entryBlock_->getInstList().push_front(decl);
+    dibuilder().insertDeclare(var->value(), dilv, expr, vloc,
+                              &entryBlock_->front());
     return;
   } else {
     // locals with no initializer should only be zero-sized vars.
@@ -185,7 +180,8 @@ void DIBuildHelper::insertVarDecl(Bvariable *var,
 
   assert(! llvm::isa<llvm::BranchInst>(insertionPoint));
   assert(insertionPoint != insertionPoint->getParent()->getTerminator());
-  decl->insertAfter(insertionPoint);
+  dibuilder().insertDeclare(var->value(), dilv, expr, vloc,
+                            insertionPoint->getNextNode());
 }
 
 void DIBuildHelper::endFunction(Bfunction *function)
@@ -310,7 +306,7 @@ void DIBuildHelper::addDebugPrefix(std::pair<llvm::StringRef, llvm::StringRef> p
 
 std::string DIBuildHelper::applyDebugPrefix(llvm::StringRef path) {
   for (const auto &remap : debugPrefixMap_)
-    if (path.startswith(remap.first))
+    if (path.starts_with(remap.first))
       return (llvm::Twine(remap.second) +
               path.substr(remap.first.size())).str();
   return path.str();

@@ -127,8 +127,8 @@ Artifact *Compilation::createOutputFileArtifact(Action *act)
   return newFileArtifact(ofn.c_str(), false);
 }
 
-llvm::Optional<Artifact*> Compilation::createTemporaryFileArtifact(Action *act)
-{
+std::optional<Artifact *>
+Compilation::createTemporaryFileArtifact(Action *act) {
   llvm::SmallString<128> tempFileName;
   std::error_code tfcEC =
       llvm::sys::fs::createTemporaryFile(act->getName(),
@@ -137,7 +137,7 @@ llvm::Optional<Artifact*> Compilation::createTemporaryFileArtifact(Action *act)
   if (tfcEC) {
     llvm::errs() << driver_.progname() << ": error: "
                  << tfcEC.message() << "\n";
-    return llvm::None;
+    return {};
   }
   return newFileArtifact(tempFileName.c_str(), true);
 }

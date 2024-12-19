@@ -2796,11 +2796,11 @@ Bfunction *Llvm_backend::function(Btype *fntype, const std::string &name,
     if (fns == "runtime.memequal" ||
         fns == "runtime.cmpstring") {
       fcn->addFnAttr(llvm::Attribute::ReadOnly);
-      fcn->addFnAttr(llvm::Attribute::ArgMemOnly);
+      fcn->setOnlyAccessesArgMemory();
     }
 
     if (fns == "runtime.memclrNoHeapPointers")
-      fcn->addFnAttr(llvm::Attribute::ArgMemOnly);
+      fcn->setOnlyAccessesArgMemory();
 
     // These functions are called in unlikely branches. But they
     // themselves are not actually cold in the runtime. So only
@@ -3290,7 +3290,7 @@ llvm::BasicBlock *GenBlocks::walkExpr(llvm::BasicBlock *curblock,
       changed = true;
     if (dibuildhelper_)
       dibuildhelper_->processExprInst(containingStmt, expr, inst);
-    curblock->getInstList().push_back(inst);
+    inst->insertAfter(&curblock->back());
     curblock = pair.second;
     newinsts.push_back(inst);
 
@@ -3300,7 +3300,7 @@ llvm::BasicBlock *GenBlocks::walkExpr(llvm::BasicBlock *curblock,
       // current block.
       LIRBuilder builder(context_, llvm::ConstantFolder());
       llvm::Instruction *unreachable = builder.CreateUnreachable();
-      curblock->getInstList().push_back(unreachable);
+      unreachable->insertAfter(&curblock->back());
       curblock = nullptr;
       changed = true;
 
@@ -3376,7 +3376,7 @@ llvm::BasicBlock *GenBlocks::genIf(Bstatement *ifst,
     else {
       LIRBuilder builder(context_, llvm::ConstantFolder());
       llvm::Instruction *unreachable = builder.CreateUnreachable();
-      tsucc->getInstList().push_back(unreachable);
+      unreachable->insertAfter(&tsucc->back());
     }
   }
 
@@ -3389,7 +3389,7 @@ llvm::BasicBlock *GenBlocks::genIf(Bstatement *ifst,
       else {
         LIRBuilder builder(context_, llvm::ConstantFolder());
         llvm::Instruction *unreachable = builder.CreateUnreachable();
-        fsucc->getInstList().push_back(unreachable);
+        unreachable->insertAfter(&fsucc->back());
       }
     }
   }
@@ -3584,12 +3584,12 @@ void GenBlocks::genDeferReturn(llvm::BasicBlock *curblock)
       if (&inst == term)
         break; // terminator is handled below
       llvm::Instruction *c = cloneInstruction(&inst, argMap);
-      curblock->getInstList().push_back(c);
+      c->insertAfter(&curblock->back());
     }
     if (llvm::isa<llvm::InvokeInst>(term)) {
       // This is the call to DEFERRETURN. Copy this then we're done.
       llvm::Instruction *c = cloneInstruction(term, argMap);
-      curblock->getInstList().push_back(c);
+      c->insertAfter(&curblock->back());
       break;
     }
     // By construction it should be linear code.
@@ -4027,7 +4027,7 @@ void Llvm_backend::fixupEpilogBlock(Bfunction *bfunction,
       llvm::Value *zv = llvm::Constant::getNullValue(rtyp);
       ri = builder.CreateRet(zv);
     }
-    epilog->getInstList().push_back(ri);
+    ri->insertAfter(&epilog->back());
   }
 }
 

@@ -101,7 +101,7 @@ Linux::~Linux()
 Tool *Linux::buildCompiler()
 {
   llvm::opt::Arg *xarg = driver().args().getLastArg(gollvm::options::OPT_x);
-  if (xarg != nullptr && llvm::StringRef(xarg->getValue()).equals("c")) {
+  if (xarg != nullptr && xarg->containsValue("c")) {
     // This is a dummy C compile.
     return new DummyCompileC(*this, driver().executablePath());
   }

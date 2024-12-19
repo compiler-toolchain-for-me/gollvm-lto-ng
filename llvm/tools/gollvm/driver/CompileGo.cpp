@@ -42,12 +42,11 @@ namespace gollvm { namespace arch {
 #include "llvm/Config/llvm-config.h"
 #include "llvm/IR/DiagnosticInfo.h"
 #include "llvm/IR/DiagnosticPrinter.h"
-#include "llvm/IR/IRPrintingPasses.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/LLVMRemarkStreamer.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Verifier.h"
-#include "llvm/MC/SubtargetFeature.h"
+#include "llvm/IRPrinter/IRPrintingPasses.h"
 #include "llvm/MC/TargetRegistry.h"
 #include "llvm/Option/Arg.h"
 #include "llvm/Option/ArgList.h"
@@ -62,7 +61,6 @@ namespace gollvm { namespace arch {
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Format.h"
-#include "llvm/Support/Host.h"
 #include "llvm/Support/ManagedStatic.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Path.h"
@@ -73,11 +71,14 @@ namespace gollvm { namespace arch {
 #include "llvm/Support/Signals.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/ToolOutputFile.h"
+#include "llvm/Support/VirtualFileSystem.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetMachine.h"
+#include "llvm/TargetParser/Host.h"
+#include "llvm/TargetParser/SubtargetFeature.h"
 #include "llvm/Transforms/IPO.h"
-#include "llvm/Transforms/IPO/PassManagerBuilder.h"
 #include "llvm/Transforms/Utils.h"
+#include "llvm/Transforms/Utils/AddDiscriminators.h"
 
 #include <sstream>
 
@@ -117,10 +118,10 @@ class CompileGoImpl {
   const char *progname_;
   std::string executablePath_;
   opt::InputArgList &args_;
-  CodeGenOpt::Level cgolvl_;
+  CodeGenOptLevel cgolvl_;
   OptimizationLevel olvl_;
   PipelineTuningOptions pto_;
-  Optional<PGOOptions> pgo_;
+  std::optional<PGOOptions> pgo_;
   bool hasError_;
   std::unique_ptr<Llvm_backend> bridge_;
   std::unique_ptr<TargetMachine> target_;
@@ -137,8 +138,10 @@ class CompileGoImpl {
   std::string sampleProfileFile_;
   bool enable_gc_;
 
+#if 0
   void createFunctionPasses(legacy::FunctionPassManager &FPM);
-  Optional<PGOOptions> setupPGO();
+#endif
+  std::optional<PGOOptions> setupPGO();
   void setupGoSearchPath();
   void setCConv();
 
@@ -156,22 +159,13 @@ class CompileGoImpl {
   bool enableVectorization(bool slp);
 };
 
-CompileGoImpl::CompileGoImpl(CompileGo &cg,
-                             ToolChain &tc,
+CompileGoImpl::CompileGoImpl(CompileGo &cg, ToolChain &tc,
                              const std::string &executablePath)
-    : cg_(cg),
-      triple_(tc.driver().triple()),
-      toolchain_(tc),
-      driver_(tc.driver()),
-      cconv_(CallingConvId::MaxID),
-      progname_(tc.driver().progname()),
-      executablePath_(executablePath),
-      args_(tc.driver().args()),
-      cgolvl_(CodeGenOpt::Default),
-      olvl_(OptimizationLevel::O2),
-      hasError_(false),
-      enable_gc_(false)
-{
+    : cg_(cg), triple_(tc.driver().triple()), toolchain_(tc),
+      driver_(tc.driver()), cconv_(CallingConvId::MaxID),
+      progname_(tc.driver().progname()), executablePath_(executablePath),
+      args_(tc.driver().args()), cgolvl_(CodeGenOptLevel::Default),
+      olvl_(OptimizationLevel::O2), hasError_(false), enable_gc_(false) {
   InitializeAllTargets();
   InitializeAllTargetMCs();
   InitializeAllAsmPrinters();
@@ -320,27 +314,27 @@ bool CompileGoImpl::setup(const Action &jobAction)
     switch (lev[0]) {
       case '0':
         olvl_ = OptimizationLevel::O0;
-        cgolvl_ = CodeGenOpt::None;
+        cgolvl_ = CodeGenOptLevel::None;
         break;
       case '1':
         olvl_ = OptimizationLevel::O1;
-        cgolvl_ = CodeGenOpt::Less;
+        cgolvl_ = CodeGenOptLevel::Less;
         break;
       case 'z':
         olvl_ = OptimizationLevel::Oz;
-        cgolvl_ = CodeGenOpt::Less;
+        cgolvl_ = CodeGenOptLevel::Less;
         break;
       case 's':
         olvl_ = OptimizationLevel::Os;
-        cgolvl_ = CodeGenOpt::Less;
+        cgolvl_ = CodeGenOptLevel::Less;
         break;
       case '2':
         olvl_ = OptimizationLevel::O2;
-        cgolvl_ = CodeGenOpt::Default;
+        cgolvl_ = CodeGenOptLevel::Default;
         break;
       case '3':
         olvl_ = OptimizationLevel::O3;
-        cgolvl_ = CodeGenOpt::Aggressive;
+        cgolvl_ = CodeGenOptLevel::Aggressive;
         break;
       default:
         errs() << progname_ << ": invalid optimization level.\n";
@@ -389,11 +383,22 @@ bool CompileGoImpl::setup(const Action &jobAction)
     }
   }
 
-  go_no_warn = args_.hasArg(gollvm::options::OPT_w);
-  go_loc_show_column =
-      driver_.reconcileOptionPair(gollvm::options::OPT_fshow_column,
-                                  gollvm::options::OPT_fno_show_column,
-                                  true);
+  pto_.LoopVectorization = enableVectorization(false);
+  pto_.SLPVectorization = enableVectorization(true);
+  pto_.LoopUnrolling =
+      driver_.reconcileOptionPair(gollvm::options::OPT_funroll_loops,
+                                  gollvm::options::OPT_fno_unroll_loops, true);
+  pto_.LoopInterleaving = driver_.reconcileOptionPair(
+      gollvm::options::OPT_finterleave_loops,
+      gollvm::options::OPT_fno_interleave_loops, true);
+  // Merge identical functions at the LLVM IR level.
+  pto_.MergeFunctions = driver_.reconcileOptionPair(
+      gollvm::options::OPT_fmerge_functions,
+      gollvm::options::OPT_fno_merge_functions, false);
+  // Provide .cgoprofile section for lld to order functions.
+  pto_.CallGraphProfile =
+      driver_.reconcileOptionPair(gollvm::options::OPT_fcg_profile,
+                                  gollvm::options::OPT_fno_cg_profile, false);
 
   // Capture optimization record.
   opt::Arg *optrecordarg =
@@ -451,7 +456,7 @@ bool CompileGoImpl::setup(const Action &jobAction)
   llvm::DebugCompressionType dct = llvm::DebugCompressionType::None;
   if (!driver_.determineDebugCompressionType(&dct))
     return false;
-  Options.CompressDebugSections = dct;
+  Options.MCOptions.CompressDebugSections = dct;
 
   // FIXME: this hard-wires on the equivalent of -ffunction-sections
   // and -fdata-sections, since there doesn't seem to be a high-level
@@ -504,7 +509,7 @@ bool CompileGoImpl::setup(const Action &jobAction)
     return false;
 
   // Create target machine
-  Optional<llvm::CodeModel::Model> CM = None;
+  std::optional<llvm::CodeModel::Model> CM = {};
   target_.reset(
       TheTarget->createTargetMachine(triple_.getTriple(),
                                      targetCpuAttr_, targetFeaturesAttr_,
@@ -529,7 +534,7 @@ bool CompileGoImpl::initBridge()
       std::make_unique<BEDiagnosticHandler>(&this->hasError_,
                                             this->remarkCtl_));
 
-  llvm::Optional<unsigned> enable_gc =
+  std::optional<unsigned> enable_gc =
       driver_.getLastArgAsInteger(gollvm::options::OPT_enable_gc_EQ, 0u);
   enable_gc_ = enable_gc && *enable_gc;
 
@@ -555,7 +560,7 @@ bool CompileGoImpl::initBridge()
   bridge_.reset(new Llvm_backend(context_, module_.get(), linemap_.get(), addrspace, triple_, cconv_));
 
   // Honor inline, tracelevel cmd line options
-  llvm::Optional<unsigned> tl =
+  std::optional<unsigned> tl =
       driver_.getLastArgAsInteger(gollvm::options::OPT_tracelevel_EQ, 0u);
   if (!tl)
     return false;
@@ -638,7 +643,7 @@ bool CompileGoImpl::initBridge()
                                   true);
   args.compiling_runtime =
       args_.hasArg(gollvm::options::OPT_fgo_compiling_runtime);
-  llvm::Optional<int> del =
+  std::optional<int> del =
       driver_.getLastArgAsInteger(gollvm::options::OPT_fgo_debug_escape_EQ, 0);
   if (!del)
     return false;
@@ -797,7 +802,7 @@ bool CompileGoImpl::invokeFrontEnd()
     bridge_->dumpModule();
   if (!args_.hasArg(gollvm::options::OPT_noverify) && !go_be_saw_errors())
     bridge_->verifyModule();
-  llvm::Optional<unsigned> tl =
+  std::optional<unsigned> tl =
       driver_.getLastArgAsInteger(gollvm::options::OPT_tracelevel_EQ, 0u);
   if (*tl)
     std::cerr << "linemap stats:" << linemap_->statistics() << "\n";
@@ -829,11 +834,6 @@ bool CompileGoImpl::enableVectorization(bool slp)
                                        enable);
 }
 
-static void addAddDiscriminatorsPass(const llvm::PassManagerBuilder &Builder,
-                                     llvm::legacy::PassManagerBase &PM) {
-  PM.add(createAddDiscriminatorsPass());
-}
-
 // Choose a filename for the profile generation.
 std::string getProfileGenPath(const std::string &directory) {
   std::string fileName =
@@ -854,27 +854,28 @@ std::string getProfileUsePath(const std::string &arg) {
 }
 
 // Detect the profile kind.
-static Optional<bool>
+static std::optional<bool>
 isPGOUseContextSensitive(const std::string &profileInput) {
-  auto readerOrErr = llvm::IndexedInstrProfReader::create(profileInput);
+  auto FS = llvm::vfs::getRealFileSystem();
+  auto readerOrErr = llvm::IndexedInstrProfReader::create(profileInput, *FS);
   // Eagerly report the error message here.
   if (auto err = readerOrErr.takeError()) {
     errs() << "error: " << profileInput
       << ": Could not parse profile: " << toString(std::move(err)) << "\n";
-    return None;
+    return {};
   }
   std::unique_ptr<llvm::IndexedInstrProfReader> reader =
     std::move(readerOrErr.get());
   if (!reader->isIRLevelProfile()) {
     errs() << "error: " << profileInput
       << ": Only LLVM IR level profile is supported\n";
-    return None;
+    return {};
   }
   return reader->hasCSIRLevelProfile();
 }
 
-Optional<PGOOptions> CompileGoImpl::setupPGO() {
-  Optional<PGOOptions> pgoOpt;
+std::optional<PGOOptions> CompileGoImpl::setupPGO() {
+  std::optional<PGOOptions> pgoOpt;
 
   bool debugInfoForProfiling = driver_.reconcileOptionPair(
     gollvm::options::OPT_fdebug_info_for_profiling,
@@ -896,8 +897,10 @@ Optional<PGOOptions> CompileGoImpl::setupPGO() {
                             gollvm::options::OPT_fno_profile_generate)) {
     // -fprofile-generate
     std::string profileOutput = getProfileGenPath(*p);
-    pgoOpt = PGOOptions(profileOutput, "", "", PGOOptions::IRInstr,
-                        PGOOptions::NoCSAction, debugInfoForProfiling);
+    pgoOpt =
+        PGOOptions(profileOutput, "", "", "", llvm::vfs::getRealFileSystem(),
+                   PGOOptions::IRInstr, PGOOptions::NoCSAction,
+                   PGOOptions::ColdFuncOpt::Default, debugInfoForProfiling);
   } else if (auto p =
              driver_.reconcilePath(gollvm::options::OPT_fprofile_use,
                                    gollvm::options::OPT_fprofile_use_EQ,
@@ -906,8 +909,10 @@ Optional<PGOOptions> CompileGoImpl::setupPGO() {
     std::string profileInput = getProfileUsePath(*p);
     if (auto cs = isPGOUseContextSensitive(profileInput)) {
       csAction = *cs ? PGOOptions::CSIRUse : PGOOptions::NoCSAction;
-      pgoOpt = PGOOptions(profileInput, "", profileRemappingFile,
-                          PGOOptions::IRUse, csAction, debugInfoForProfiling);
+      pgoOpt =
+          PGOOptions(profileInput, "", profileRemappingFile, "",
+                     vfs::getRealFileSystem(), PGOOptions::IRUse, csAction,
+                     PGOOptions::ColdFuncOpt::Default, debugInfoForProfiling);
     }
   } else if (auto p = driver_.reconcilePath(
       gollvm::options::OPT_fprofile_sample_use,
@@ -915,17 +920,22 @@ Optional<PGOOptions> CompileGoImpl::setupPGO() {
       gollvm::options::OPT_fno_profile_sample_use)) {
     // -fprofile-sample-use
     sampleProfileFile_ = getProfileUsePath(*p);
-    pgoOpt = PGOOptions(sampleProfileFile_, "", profileRemappingFile,
-                        PGOOptions::SampleUse, PGOOptions::NoCSAction,
-                        debugInfoForProfiling, pseudoProbeForProfiling);
+    pgoOpt =
+        PGOOptions(sampleProfileFile_, "", profileRemappingFile, "",
+                   llvm::vfs::getRealFileSystem(), PGOOptions::SampleUse,
+                   PGOOptions::NoCSAction, PGOOptions::ColdFuncOpt::Default,
+                   debugInfoForProfiling, pseudoProbeForProfiling);
   } else if (pseudoProbeForProfiling) {
     // -fpseudo-probe-for-profiling
-    pgoOpt = PGOOptions("", "", "", PGOOptions::NoAction,
-                        PGOOptions::NoCSAction, debugInfoForProfiling, true);
+    pgoOpt = PGOOptions("", "", "", "", llvm::vfs::getRealFileSystem(),
+                        PGOOptions::NoAction, PGOOptions::NoCSAction,
+                        PGOOptions::ColdFuncOpt::Default, debugInfoForProfiling,
+                        true);
   } else if (debugInfoForProfiling) {
     // -fdebug-info-for-profiling
-    pgoOpt = PGOOptions("", "", "", PGOOptions::NoAction,
-                        PGOOptions::NoCSAction, true);
+    pgoOpt = PGOOptions("", "", "", "", llvm::vfs::getRealFileSystem(),
+                        PGOOptions::NoAction, PGOOptions::NoCSAction,
+                        PGOOptions::ColdFuncOpt::Default, true);
   }
 
   // Check if we want to generate a CS profile.
@@ -944,14 +954,17 @@ Optional<PGOOptions> CompileGoImpl::setupPGO() {
       pgoOpt->CSProfileGenFile = profileOutput;
       pgoOpt->CSAction = PGOOptions::CSIRInstr;
     } else {
-      pgoOpt = PGOOptions("", profileOutput, "", PGOOptions::NoAction,
-                          PGOOptions::CSIRInstr, debugInfoForProfiling);
+      pgoOpt =
+          PGOOptions("", profileOutput, "", "", llvm::vfs::getRealFileSystem(),
+                     PGOOptions::NoAction, PGOOptions::CSIRInstr,
+                     PGOOptions::ColdFuncOpt::Default, debugInfoForProfiling);
     }
   }
 
   return pgoOpt;
 }
 
+#if 0
 void CompileGoImpl::createFunctionPasses(legacy::FunctionPassManager &FPM)
 {
   if (args_.hasArg(gollvm::options::OPT_disable_llvm_passes))
@@ -1002,6 +1015,7 @@ void CompileGoImpl::createFunctionPasses(legacy::FunctionPassManager &FPM)
 
   pmb.populateFunctionPassManager(FPM);
 }
+#endif
 
 bool CompileGoImpl::invokeBackEnd(const Action &jobAction)
 {
@@ -1017,7 +1031,7 @@ bool CompileGoImpl::invokeBackEnd(const Action &jobAction)
   PrintPassOptions printPassOpts;
   printPassOpts.Indent = debugPassStructure;
   printPassOpts.SkipAnalyses = debugPassStructure;
-  StandardInstrumentations si(debugPassManager || debugPassStructure,
+  StandardInstrumentations si(context_, debugPassManager || debugPassStructure,
                               verifyEach, printPassOpts);
 
   // TODO: Maybe better to keep some kind of pass table.
@@ -1043,30 +1057,51 @@ bool CompileGoImpl::invokeBackEnd(const Action &jobAction)
 
   // Set up function passes
   // TODO: function pass should be put under new pass manager.
+#if 0
   legacy::FunctionPassManager functionPasses(module_.get());
   functionPasses.add(
       createTargetTransformInfoWrapperPass(target_->getTargetIRAnalysis()));
+#endif
 
   bool disablePasses =  args_.hasArg(gollvm::options::OPT_disable_llvm_passes);
+#if 0
   if (!disablePasses)
     createFunctionPasses(functionPasses);
+#endif
 
-  // Set up module passes.
-  // TODO: Support LTO.
-  bool isThinLTO = false;
-  bool isLTO = false;
+  ThinOrFullLTOPhase lto_phase = ThinOrFullLTOPhase::None;
 
   ModulePassManager modulePasses;
   if (!disablePasses) {
     if (olvl_ == OptimizationLevel::O0) {
-      modulePasses = pb.buildO0DefaultPipeline(olvl_, isLTO || isThinLTO);
-    } else if (isThinLTO) {
+
+      modulePasses = pb.buildO0DefaultPipeline(olvl_, lto_phase);
+    } else if (lto_phase == ThinOrFullLTOPhase::ThinLTOPreLink) {
       modulePasses = pb.buildThinLTOPreLinkDefaultPipeline(olvl_);
-    } else if (isLTO) {
+    } else if (lto_phase == ThinOrFullLTOPhase::FullLTOPreLink) {
       modulePasses = pb.buildLTOPreLinkDefaultPipeline(olvl_);
     } else {
       modulePasses = pb.buildPerModuleDefaultPipeline(olvl_);
     }
+  }
+
+  bool needDwarfDiscr = !sampleProfileFile_.empty();
+
+  opt::Arg *dbgprofarg =
+      args_.getLastArg(gollvm::options::OPT_fdebug_info_for_profiling,
+                       gollvm::options::OPT_fno_debug_info_for_profiling);
+  if (dbgprofarg) {
+    if (dbgprofarg->getOption().matches(
+            gollvm::options::OPT_fdebug_info_for_profiling))
+      needDwarfDiscr = true;
+    else
+      needDwarfDiscr = false;
+  }
+  if (needDwarfDiscr) {
+    pb.registerPipelineStartEPCallback([](llvm::ModulePassManager &MPM,
+                                          llvm::OptimizationLevel) {
+      MPM.addPass(createModuleToFunctionPassAdaptor(AddDiscriminatorsPass()));
+    });
   }
 
   // Disable inlining getg in some cases on x86_64.
@@ -1121,9 +1156,11 @@ bool CompileGoImpl::invokeBackEnd(const Action &jobAction)
   // LLVMTargetMachine::addPassesToEmitFile (and its callee).
   // TODO: error check.
   {
-    CodeGenFileType ft = (jobAction.type() == Action::A_CompileAndAssemble ?
-                          CGFT_ObjectFile : CGFT_AssemblyFile);
-    LLVMTargetMachine *lltm = (LLVMTargetMachine*)(target_.get()); // FIXME: TargetMachine doesn't support llvm::cast?
+    CodeGenFileType ft = (jobAction.type() == Action::A_CompileAndAssemble
+                              ? CodeGenFileType::ObjectFile
+                              : CodeGenFileType::AssemblyFile);
+    llvm::TargetMachine *lltm =
+        target_.get(); // FIXME: TargetMachine doesn't support llvm::cast?
     TargetPassConfig *passConfig = lltm->createPassConfig(codeGenPasses);
     // Set PassConfig options provided by TargetMachine.
     passConfig->setDisableVerify(noverify);
@@ -1146,13 +1183,14 @@ bool CompileGoImpl::invokeBackEnd(const Action &jobAction)
   }
 
 run:
+#if 0
   // Here we go... first function passes
   functionPasses.doInitialization();
   for (Function &F : *module_.get())
     if (!F.isDeclaration())
       functionPasses.run(F);
   functionPasses.doFinalization();
-
+#endif
   // ... then module passes
   modulePasses.run(*module_.get(), mam);
 
