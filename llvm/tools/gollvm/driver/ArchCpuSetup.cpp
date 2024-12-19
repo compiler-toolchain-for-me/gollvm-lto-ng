@@ -13,8 +13,8 @@
 #include "ArchCpuSetup.h"
 
 #include "llvm/Option/Arg.h"
-#include "llvm/Support/Host.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/TargetParser/Host.h"
 
 namespace gollvm { namespace arch {
 #include "ArchCpusAttrs.h"

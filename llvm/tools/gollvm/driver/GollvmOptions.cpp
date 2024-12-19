@@ -20,23 +20,35 @@ namespace options {
 #include "GollvmOptions.inc"
 #undef PREFIX
 
+#define OPTTABLE_STR_TABLE_CODE
+#include "GollvmOptions.inc"
+#undef OPTTABLE_STR_TABLE_CODE
+
+#define OPTTABLE_VALUES_CODE
+#include "GollvmOptions.inc"
+#undef OPTTABLE_VALUES_CODE
+
+#define OPTTABLE_PREFIXES_TABLE_CODE
+#include "GollvmOptions.inc"
+#undef OPTTABLE_PREFIXES_TABLE_CODE
+
+#define OPTTABLE_PREFIXES_UNION_CODE
+#include "GollvmOptions.inc"
+#undef OPTTABLE_PREFIXES_UNION_CODE
+
 static const OptTable::Info InfoTable[] = {
-#define OPTION(PREFIX, NAME, ID, KIND, GROUP, ALIAS, ALIASARGS, FLAGS, PARAM,  \
-               HELPTEXT, METAVAR, VALUES)                                      \
-  {PREFIX, NAME,  HELPTEXT,    METAVAR,     OPT_##ID,  Option::KIND##Class,    \
-   PARAM,  FLAGS, OPT_##GROUP, OPT_##ALIAS, ALIASARGS, VALUES},
+#define OPTION(...) LLVM_CONSTRUCT_OPT_INFO(__VA_ARGS__),
 #include "GollvmOptions.inc"
 #undef OPTION
 };
 
 namespace {
-
-class DriverOptTable : public OptTable {
+class DriverOptTable : public PrecomputedOptTable {
 public:
   DriverOptTable()
-      : OptTable(InfoTable) {}
+      : PrecomputedOptTable(OptionStrTable, OptionPrefixesTable, InfoTable,
+                            OptionPrefixesUnion) {}
 };
-
 }
 
 std::unique_ptr<OptTable> createGollvmDriverOptTable() {

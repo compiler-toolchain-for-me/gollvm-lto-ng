@@ -11,9 +11,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/Support/FileSystem.h"
-#include "llvm/Support/Host.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/Program.h"
+#include "llvm/TargetParser/Host.h"
 
 #include <sstream>
 
@@ -185,9 +185,9 @@ bool Driver::supportedAsmOptions()
         value == "--nocompress-debug-sections") {
       continue;
     }
-    if (value.startswith("-compress-debug-sections") ||
-        value.startswith("--compress-debug-sections") ||
-        value.startswith("-march")) {
+    if (value.starts_with("-compress-debug-sections") ||
+        value.starts_with("--compress-debug-sections") ||
+        value.starts_with("-march")) {
       continue;
     }
     // Unrecognized -Wa,... option
@@ -203,11 +203,11 @@ llvm::DebugCompressionType *Driver::gzArgToDCT(llvm::StringRef ga,
                                                llvm::DebugCompressionType *dct,
                                                const char *which)
 {
-  if (ga == "zlib") {
-    *dct = llvm::DebugCompressionType::Z;
+  if (ga == "zlib" || ga == "zlib-gnu") {
+    *dct = llvm::DebugCompressionType::Zlib;
     return dct;
-  } else if (ga == "zlib-gnu") {
-    *dct = llvm::DebugCompressionType::GNU;
+  } else if (ga == "zstd") {
+    *dct = llvm::DebugCompressionType::Zstd;
     return dct;
   } else if (ga == "none") {
     *dct = llvm::DebugCompressionType::None;
@@ -231,7 +231,7 @@ bool Driver::determineDebugCompressionType(llvm::DebugCompressionType *dct)
                                             gollvm::options::OPT_Wa_COMMA,
                                             gollvm::options::OPT_Xassembler)) {
     if (arg->getOption().matches(gollvm::options::OPT_gz)) {
-      *dct = llvm::DebugCompressionType::GNU;
+      *dct = llvm::DebugCompressionType::Zlib;
     } else if (arg->getOption().matches(gollvm::options::OPT_gz_EQ)) {
       auto value = llvm::StringRef(arg->getValue());
      if (gzArgToDCT(value, dct, "-gz=") == nullptr)
@@ -242,15 +242,15 @@ bool Driver::determineDebugCompressionType(llvm::DebugCompressionType *dct)
       if (value == "-nocompress-debug-sections" ||
           value == "--nocompress-debug-sections") {
         *dct = llvm::DebugCompressionType::None;
-      } else if (value.startswith("-compress-debug-sections") ||
-                 value.startswith("--compress-debug-sections")) {
+      } else if (value.starts_with("-compress-debug-sections") ||
+                 value.starts_with("--compress-debug-sections")) {
         const char *wh =
             (arg->getOption().matches(gollvm::options::OPT_Xassembler) ?
              "-Xassembler" : "-Wa,");
         value.consume_front("--compress-debug-sections");
         value.consume_front("-compress-debug-sections");
         auto arg = value;
-        if (value.startswith("="))
+        if (value.starts_with("="))
           arg.consume_front("=");
         else
           arg = "zlib";
@@ -384,12 +384,13 @@ Driver::reconcileOptionPair(gollvm::options::ID yesOption,
 // the path from the rightmost yesPathOpt (maybe empty string if no yetPathOpt
 // present), otherwise return None.
 
-Optional<std::string> Driver::reconcilePath(llvm::opt::OptSpecifier yesOpt,
-                                            llvm::opt::OptSpecifier yesPathOpt,
-                                            llvm::opt::OptSpecifier noOpt) {
+std::optional<std::string>
+Driver::reconcilePath(llvm::opt::OptSpecifier yesOpt,
+                      llvm::opt::OptSpecifier yesPathOpt,
+                      llvm::opt::OptSpecifier noOpt) {
   opt::Arg *lastArg = args_.getLastArg(yesOpt, yesPathOpt, noOpt);
   if (!lastArg || lastArg->getOption().matches(noOpt))
-    return None;
+    return {};
   std::string path;
   if (opt::Arg *pathArg = args_.getLastArg(yesPathOpt)) {
     // Leave the check if path exists to the caller.
@@ -398,20 +399,16 @@ Optional<std::string> Driver::reconcilePath(llvm::opt::OptSpecifier yesOpt,
   return path;
 }
 
-Optional<Reloc::Model>
-Driver::reconcileRelocModel()
-{
+std::optional<Reloc::Model> Driver::reconcileRelocModel() {
   auto picLevel = getPicLevel();
   if (picLevel != PICLevel::NotPIC) {
     Reloc::Model R = Reloc::PIC_;
     return R;
   }
-  return None;
+  return {};
 }
 
-Optional<FPOpFusion::FPOpFusionMode>
-Driver::getFPOpFusionMode()
-{
+std::optional<FPOpFusion::FPOpFusionMode> Driver::getFPOpFusionMode() {
   opt::Arg *arg = args_.getLastArg(gollvm::options::OPT_ffp_contract_EQ);
   FPOpFusion::FPOpFusionMode res = FPOpFusion::Standard;
   if (arg != nullptr) {
@@ -426,7 +423,7 @@ Driver::getFPOpFusionMode()
       errs() << progname_ << ": invalid argument '"
              << arg->getValue() << "' to '"
              << arg->getAsString(args_) << "' option\n";
-      return None;
+      return {};
     }
   }
   return res;
@@ -537,8 +534,8 @@ void Driver::appendInputActions(const inarglist &ifargs,
       opt::Arg *xarg = args_.getLastArg(gollvm::options::OPT_x);
       assert(xarg);
       const char *suf =
-          (llvm::StringRef(xarg->getValue()).equals("c") ? "c" :
-           (llvm::StringRef(xarg->getValue()).equals("go") ? "go" : "?"));
+          (xarg->containsValue("c") ? "c"
+                                    : (xarg->containsValue("go") ? "go" : "?"));
       act = new ReadStdinAction(suf);
       schedAction = true;
     } else {

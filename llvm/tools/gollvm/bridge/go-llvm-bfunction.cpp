@@ -457,11 +457,11 @@ void Bfunction::genProlog(llvm::BasicBlock *entry)
   // Append allocas for local variables
   // FIXME: create lifetime annotations
   for (auto aa : allocas_)
-    entry->getInstList().push_back(aa);
+    aa->insertAfter(&entry->back());
 
   // Param spills
   for (auto sp : spills.instructions())
-    entry->getInstList().push_back(sp);
+    sp->insertAfter(&entry->back());
 
   // Debug meta-data generation needs to know the position at which a
   // parameter variable is available for inspection -- this is
@@ -496,11 +496,11 @@ void Bfunction::fixupProlog(llvm::BasicBlock *entry,
   // we insert any new temps into the start of the block.
   if (! temps.empty())
     for (auto ai : temps) {
-      entry->getInstList().push_front(ai);
+      ai->insertBefore(&entry->front());
       if (auto *ascast = llvm::dyn_cast<llvm::AddrSpaceCastInst>(ai)) {
         llvm::Value *op = ascast->getPointerOperand();
         assert(llvm::isa<llvm::AllocaInst>(op));
-        entry->getInstList().push_front(llvm::cast<llvm::Instruction>(op));
+        llvm::cast<llvm::Instruction>(op)->insertBefore(&entry->front());
       }
     }
 }

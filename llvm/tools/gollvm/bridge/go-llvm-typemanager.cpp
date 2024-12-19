@@ -1506,7 +1506,7 @@ int64_t TypeManager::typeAlignment(Btype *btype) {
   if (btype == errorType_)
     return 1;
   llvm::Type *toget = getPlaceholderProxyIfNeeded(btype);
-  unsigned uval = datalayout_->getABITypeAlignment(toget);
+  unsigned uval = datalayout_->getABITypeAlign(toget).value();
   return static_cast<int64_t>(uval);
 }
 
@@ -1538,7 +1538,7 @@ int64_t TypeManager::typeFieldAlignment(Btype *btype) {
   llvm::StructType *dummyst = llvm::StructType::get(context_, elems);
   const llvm::StructLayout *sl = datalayout_->getStructLayout(dummyst);
   uint64_t uoff = sl->getElementOffset(1);
-  unsigned talign = datalayout_->getABITypeAlignment(toget);
+  unsigned talign = datalayout_->getABITypeAlign(toget).value();
   int64_t rval = (uoff < talign ? uoff : talign);
   return rval;
 }
@@ -1848,7 +1848,7 @@ llvm::DIType *TypeManager::buildStructDIType(BStructType *bst,
   // Now create struct type itself.  Q: should this be
   // getTypeAllocSize here instead of getTypeSizeInBits?
   uint64_t sizeInBits = datalayout_->getTypeSizeInBits(bst->type());
-  uint32_t alignInBits = datalayout_->getABITypeAlignment(bst->type());
+  uint32_t alignInBits = datalayout_->getABITypeAlign(bst->type()).value();
   llvm::DIType *derivedFrom = nullptr;
   llvm::DICompositeType *dist =
       dibuilder.createStructType(scope, typToString(bst),
@@ -1976,7 +1976,7 @@ llvm::DIType *TypeManager::buildDIType(Btype *typ, DIBuildHelper &helper)
       uint64_t arElems = bat->nelSize();
       uint64_t arSize = datalayout_->getTypeSizeInBits(bat->type());
       uint64_t arAlign =
-          datalayout_->getABITypeAlignment(bat->elemType()->type());
+          datalayout_->getABITypeAlign(bat->elemType()->type()).value();
       llvm::SmallVector<llvm::Metadata *, 1> subscripts;
       subscripts.push_back(dibuilder.getOrCreateSubrange(0, arElems));
       llvm::DINodeArray subsAr = dibuilder.getOrCreateArray(subscripts);

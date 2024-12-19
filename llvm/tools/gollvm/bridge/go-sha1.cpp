@@ -47,7 +47,8 @@ Llvm_Sha1_Helper::process_bytes(const void* buffer, size_t len)
 std::string
 Llvm_Sha1_Helper::finish()
 {
-  std::string result(ctx_->final().str(), 0, checksum_len);
+  auto arr = ctx_->final();
+  std::string result(std::begin(arr), std::begin(arr) + checksum_len);
   return result;
 }
 

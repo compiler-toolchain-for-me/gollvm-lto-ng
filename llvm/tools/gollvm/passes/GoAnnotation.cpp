@@ -19,6 +19,7 @@
 #include "llvm/CodeGen/MachineModuleInfo.h"
 #include "llvm/CodeGen/Passes.h"
 #include "llvm/CodeGen/TargetInstrInfo.h"
+#include "llvm/IR/Module.h"
 #include "llvm/PassRegistry.h"
 #include "llvm/Target/TargetMachine.h"
 

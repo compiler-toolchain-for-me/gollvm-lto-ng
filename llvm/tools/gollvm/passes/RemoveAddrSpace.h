@@ -15,6 +15,7 @@
 #ifndef LLVM_GOLLVM_PASSES_REMOVEADDRSPACE_H
 #define LLVM_GOLLVM_PASSES_REMOVEADDRSPACE_H
 
+#include "llvm/IR/DataLayout.h"
 #include "llvm/IR/PassManager.h"
 
 namespace llvm {

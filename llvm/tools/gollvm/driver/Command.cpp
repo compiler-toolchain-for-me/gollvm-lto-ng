@@ -36,13 +36,11 @@ int Command::execute(std::string *errMsg)
   argv.reserve(n);
   for (size_t i = 0; i < n; ++i)
     argv.push_back(arguments_[i]);
-  return llvm::sys::ExecuteAndWait(executable_,
-                                   argv,
-                                   /*env=*/llvm::None,
-                                   /*Redirects*/{},
+  return llvm::sys::ExecuteAndWait(executable_, argv,
+                                   /*env=*/{},
+                                   /*Redirects*/ {},
                                    /*secondsToWait=*/0,
-                                   /*memoryLimit=*/0,
-                                   errMsg);
+                                   /*memoryLimit=*/0, errMsg);
 }
 
 void Command::print(llvm::raw_ostream &os, bool quoteArgs)

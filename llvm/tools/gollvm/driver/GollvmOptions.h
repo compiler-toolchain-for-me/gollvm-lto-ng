@@ -9,6 +9,7 @@
 #ifndef LLVM_GOLLVM_DRIVER_GOLLVMOPTIONS_H
 #define LLVM_GOLLVM_DRIVER_GOLLVMOPTIONS_H
 
+#include "llvm/Option/OptTable.h"
 #include <memory>
 
 namespace llvm {
@@ -31,9 +32,7 @@ enum flags {
 
 enum ID {
     OPT_INVALID = 0, // This is not an option ID.
-#define OPTION(PREFIX, NAME, ID, KIND, GROUP, ALIAS, ALIASARGS, FLAGS, PARAM,  \
-               HELPTEXT, METAVAR, VALUES)                                      \
-  OPT_##ID,
+#define OPTION(...) LLVM_MAKE_OPT_ID(__VA_ARGS__),
 #include "GollvmOptions.inc"
     LastOption
 #undef OPTION

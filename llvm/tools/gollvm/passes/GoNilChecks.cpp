@@ -25,8 +25,6 @@
 #include "GollvmPasses.h"
 
 #include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/None.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Statistic.h"
@@ -102,11 +100,11 @@ class GoNilChecks : public MachineFunctionPass {
 
     /// If non-None, then an instruction in \p Insts that also must be
     /// hoisted.
-    Optional<ArrayRef<MachineInstr *>::iterator> PotentialDependence;
+    std::optional<ArrayRef<MachineInstr *>::iterator> PotentialDependence;
 
     /*implicit*/ DependenceResult(
         bool CanReorder,
-        Optional<ArrayRef<MachineInstr *>::iterator> PotentialDependence)
+        std::optional<ArrayRef<MachineInstr *>::iterator> PotentialDependence)
         : CanReorder(CanReorder), PotentialDependence(PotentialDependence) {
       assert((!PotentialDependence || CanReorder) &&
              "!CanReorder && PotentialDependence.hasValue() not allowed!");
@@ -252,18 +250,18 @@ GoNilChecks::computeDependence(const MachineInstr *MI,
   assert(llvm::all_of(Block, canHandle) && "Check this first!");
   assert(!is_contained(Block, MI) && "Block must be exclusive of MI!");
 
-  Optional<ArrayRef<MachineInstr *>::iterator> Dep;
+  std::optional<ArrayRef<MachineInstr *>::iterator> Dep;
 
   for (auto I = Block.begin(), E = Block.end(); I != E; ++I) {
     if (canReorder(*I, MI))
       continue;
 
-    if (Dep == None) {
+    if (!Dep.has_value()) {
       // Found one possible dependency, keep track of it.
       Dep = I;
     } else {
       // We found two dependencies, so bail out.
-      return {false, None};
+      return {false, {}};
     }
   }
 
@@ -654,7 +652,7 @@ GoNilChecks::rewriteNullChecks(
     // Insert an *unconditional* branch to not-null successor.
     if (!CheckBB->isLayoutSuccessor(NC.getNotNullSucc()))
       TII->insertBranch(*CheckBB, NC.getNotNullSucc(), nullptr,
-                        /*Cond=*/None, DL);
+                        /*Cond=*/{}, DL);
 
     NumImplicitNullChecks++;
 
@@ -724,7 +722,7 @@ GoNilChecks::insertLandingPad(MachineInstr *FaultMI,
         MI.eraseFromParent();
         break;
       }
-    TII->insertBranch(*FaultBB, PadBB, nullptr, None, DL);
+    TII->insertBranch(*FaultBB, PadBB, nullptr, {}, DL);
   }
 
   // Add EH labels before and after the faulting op.

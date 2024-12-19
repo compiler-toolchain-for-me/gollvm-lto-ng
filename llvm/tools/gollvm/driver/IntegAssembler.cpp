@@ -27,7 +27,6 @@
 #include "Driver.h"
 #include "ToolChain.h"
 
-#include "llvm/ADT/Triple.h"
 #include "llvm/Config/llvm-config.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/MC/MCAsmBackend.h"
@@ -52,7 +51,6 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/FileSystem.h"
-#include "llvm/Support/Host.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/Process.h"
@@ -63,6 +61,8 @@
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetMachine.h"
+#include "llvm/TargetParser/Host.h"
+#include "llvm/TargetParser/Triple.h"
 
 #include <sstream>
 
@@ -194,7 +194,7 @@ bool IntegAssemblerImpl::invokeAssembler()
 
   // Ensure MCAsmInfo initialization occurs before any use, otherwise sections
   // may be created with a combination of default and explicit settings.
-  MAI->setCompressDebugSections(CompressDebugSections);
+  MCOptions.CompressDebugSections = CompressDebugSections;
 
   // Build up the feature string from the target feature list.
   std::string FS;
@@ -242,8 +242,7 @@ bool IntegAssemblerImpl::invokeAssembler()
     Out = BOS.get();
   }
 
-  std::unique_ptr<MCCodeEmitter> CE(
-      TheTarget->createMCCodeEmitter(*MCII, *MRI, Ctx));
+  std::unique_ptr<MCCodeEmitter> CE(TheTarget->createMCCodeEmitter(*MCII, Ctx));
   std::unique_ptr<MCAsmBackend> MAB(
       TheTarget->createMCAsmBackend(*STI, *MRI, MCOptions));
   std::unique_ptr<MCObjectWriter> OW = MAB->createObjectWriter(*Out);

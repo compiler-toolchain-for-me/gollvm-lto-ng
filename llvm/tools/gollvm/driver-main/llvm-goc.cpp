@@ -26,7 +26,6 @@
 #include "Tool.h"
 
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/Triple.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/Bitcode/BitcodeWriterPass.h"
 #include "llvm/IR/DiagnosticInfo.h"
@@ -35,7 +34,6 @@
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Verifier.h"
-#include "llvm/MC/SubtargetFeature.h"
 #include "llvm/Option/Arg.h"
 #include "llvm/Option/ArgList.h"
 #include "llvm/Option/OptTable.h"
@@ -43,8 +41,8 @@
 #include "llvm/Passes/PassBuilder.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
-#include "llvm/Support/Format.h"
 #include "llvm/Support/FileSystem.h"
+#include "llvm/Support/Format.h"
 #include "llvm/Support/ManagedStatic.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Path.h"
@@ -56,8 +54,9 @@
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetMachine.h"
+#include "llvm/TargetParser/SubtargetFeature.h"
+#include "llvm/TargetParser/Triple.h"
 #include "llvm/Transforms/IPO.h"
-#include "llvm/Transforms/IPO/PassManagerBuilder.h"
 
 #include <algorithm>
 #include <cstring>
@@ -95,7 +94,7 @@ bool CommandLineParser::parseCommandLine(int argc, char **argv)
   const char *progname = argv[0];
 
   unsigned missingArgIndex, missingArgCount;
-  ArrayRef<const char *> argvv = makeArrayRef(argv, argc);
+  ArrayRef<const char *> argvv(argv, argc);
   args_ = opts_->ParseArgs(argvv.slice(1), missingArgIndex, missingArgCount);
 
   // Honor --help first
@@ -172,9 +171,8 @@ bool CommandLineParser::parseCommandLine(int argc, char **argv)
   // that standard input be empty (so as to support the Go tool, but
   // not act as a general-purposes C compiler).
   opt::Arg *xarg = args_.getLastArg(gollvm::options::OPT_x);
-  if (xarg != nullptr &&
-      ! llvm::StringRef(xarg->getValue()).equals("c") &&
-      ! llvm::StringRef(xarg->getValue()).equals("go")) {
+  if (xarg != nullptr && llvm::StringRef(xarg->getValue()) != "c" &&
+      llvm::StringRef(xarg->getValue()) != "go") {
     errs() << progname << ": invalid argument '"
            << xarg->getValue() << "' to '"
            << xarg->getAsString(args_) << "' option\n";

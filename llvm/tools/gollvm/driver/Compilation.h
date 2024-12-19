@@ -45,9 +45,9 @@ class Compilation {
   // Generate a new temp file and return an artifact for it. Here
   // llvm::Optional is used in case the temp file creation fails for
   // some reason.
-  llvm::Optional<Artifact*> createTemporaryFileArtifact(Action *act);
+  std::optional<Artifact *> createTemporaryFileArtifact(Action *act);
 
-    // Create new artifact based on file name. If 'isTempfile' is set,
+  // Create new artifact based on file name. If 'isTempfile' is set,
   // the file should be scheduled for deletion after compilation finishes.
   Artifact *newFileArtifact(const char *path, bool isTempFile);
 
