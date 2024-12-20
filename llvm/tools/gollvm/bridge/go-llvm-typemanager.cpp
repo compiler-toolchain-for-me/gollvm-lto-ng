@@ -1008,8 +1008,8 @@ bool TypeManager::setPlaceholderPointerType(Btype *placeholder,
   // Circular function/pointer types have isPlaceholder false, but they do
   // need to resolve, so special-case them.
   if (!placeholder->isPlaceholder() &&
-      circularPointerTypes_.find(placeholder->type()) == circularPointerTypes_.end() &&
-      circularFunctionTypes_.find(placeholder->type()) == circularFunctionTypes_.end())
+      circularPointerTypes_.find(placeholder) == circularPointerTypes_.end() &&
+      circularFunctionTypes_.find(placeholder) == circularFunctionTypes_.end())
     return true;
 
   assert(anonTypes_.find(placeholder) == anonTypes_.end());
@@ -1038,8 +1038,8 @@ bool TypeManager::setPlaceholderPointerType(Btype *placeholder,
       }
 
       // Circular pointer type handling
-      circularConversionLoadMap_[cpt->type()] = elt;
-      circularConversionAddrMap_[elt->type()] = cpt;
+      circularConversionLoadMap_[cpt] = elt;
+      circularConversionAddrMap_[elt] = cpt;
 
       return setPlaceholderPointerType(placeholder, cpt);
     }
@@ -1056,9 +1056,9 @@ bool TypeManager::setPlaceholderPointerType(Btype *placeholder,
     std::cerr << "redir: "; to_type->dump();
   }
 
-  auto it = circularFunctionTypes_.find(placeholder->type());
+  auto it = circularFunctionTypes_.find(placeholder);
   if (it != circularFunctionTypes_.end())
-    circularFunctionTypes_.insert(to_type->type());
+    circularFunctionTypes_.insert(to_type);
 
   // Update the target type for the pointer
   BPointerType *bpt = placeholder->castToBPointerType();
@@ -1251,11 +1251,11 @@ Btype *TypeManager::circularPointerType(Btype *placeholder, bool isfunc) {
     // Push marker and placeholder onto a stack so that we can
     // update them when the appropriate function type is created.
     circularFunctionPlaceholderTypes_.insert(placeholder);
-    circularFunctionTypes_.insert(rval->type());
+    circularFunctionTypes_.insert(rval);
   } else {
     // Set up to start tracking the types that will make up the
     // loop involved in the cycle.
-    circularPointerTypes_.insert(circ_typ);
+    circularPointerTypes_.insert(rval);
   }
 
   if (traceLevel() > 1) {
@@ -1278,35 +1278,25 @@ bool TypeManager::isCircularFunctionType(Btype *btype) {
   auto it = circularFunctionPlaceholderTypes_.find(btype);
   if (it != circularFunctionPlaceholderTypes_.end())
     return true;
-  return isCircularFunctionType(btype->type());
-}
-
-bool TypeManager::isCircularFunctionType(llvm::Type *typ) {
-  assert(typ);
-  auto it = circularFunctionTypes_.find(typ);
-  return it != circularFunctionTypes_.end();
+  auto it2 = circularFunctionTypes_.find(btype);
+  return it2 != circularFunctionTypes_.end();
 }
 
 // Return whether we might be looking at a circular pointer type.
 
-bool TypeManager::isCircularPointerType(Btype *btype) {
-  assert(btype);
-  return isCircularPointerType(btype->type());
-}
-
-bool TypeManager::isCircularPointerType(llvm::Type *typ) {
+bool TypeManager::isCircularPointerType(Btype *typ) {
   assert(typ);
   auto it = circularPointerTypes_.find(typ);
   return it != circularPointerTypes_.end();
 }
 
 Btype *TypeManager::circularTypeLoadConversion(Btype *typ) {
-  auto it = circularConversionLoadMap_.find(typ->type());
+  auto it = circularConversionLoadMap_.find(typ);
   return it != circularConversionLoadMap_.end()  ? it->second : nullptr;
 }
 
 Btype *TypeManager::circularTypeAddrConversion(Btype *typ) {
-  auto it = circularConversionAddrMap_.find(typ->type());
+  auto it = circularConversionAddrMap_.find(typ);
   if (it != circularConversionAddrMap_.end())
     return it->second;
   return nullptr;
@@ -1564,134 +1554,6 @@ int64_t TypeManager::llvmTypeFieldOffset(llvm::StructType *llst, size_t fidx)
   return static_cast<int64_t>(uoff);
 }
 
-bool TypeManager::isPtrToIfaceStructType(llvm::Type *typ)
-{
-  if (! typ->isPointerTy())
-    return false;
-  llvm::PointerType *pt = llvm::cast<llvm::PointerType>(typ);
-  llvm::Type *elt = pt->getElementType();
-  if (! elt->isStructTy())
-    return false;
-  llvm::StructType *st = llvm::cast<llvm::StructType>(elt);
-  if (st->getNumElements() != 2)
-    return false;
-  llvm::SmallPtrSet<llvm::Type *, 32> vis;
-  // expect { ptr, ptr } or { ptr, uintptr }
-  return (st->getElementType(0)->isPointerTy() &&
-          (st->getElementType(1)->isPointerTy() ||
-           st->getElementType(1) == llvmIntegerType()));
-}
-
-bool TypeManager::isFuncDescriptorType(llvm::Type *typ)
-{
-  if (! typ->isStructTy())
-    return false;
-  llvm::StructType *st = llvm::cast<llvm::StructType>(typ);
-  if (st->getNumElements() != 1)
-    return false;
-  llvm::Type *f0t = st->getElementType(0);
-  llvm::PointerType *f0tpt = nullptr;
-  if (f0t->isPointerTy())
-    f0tpt = llvm::cast<llvm::PointerType>(f0t);
-  if (f0t != llvmIntegerType_ &&
-      !f0t->isFunctionTy() &&
-      !(f0tpt && f0tpt->getElementType()->isFunctionTy()))
-    return false;
-  return true;
-}
-
-bool TypeManager::isPtrToFuncDescriptorType(llvm::Type *typ)
-{
-  if (! typ->isPointerTy())
-    return false;
-  llvm::PointerType *pt = llvm::cast<llvm::PointerType>(typ);
-  return isFuncDescriptorType(pt->getElementType());
-}
-
-bool TypeManager::isPtrToFuncType(llvm::Type *typ)
-{
-  if (! typ->isPointerTy())
-    return false;
-  llvm::PointerType *pt = llvm::cast<llvm::PointerType>(typ);
-  return pt->getElementType()->isFunctionTy();
-}
-
-bool TypeManager::isPtrToVoidType(llvm::Type *typ)
-{
-  if (! typ->isPointerTy())
-    return false;
-  llvm::PointerType *pt = llvm::cast<llvm::PointerType>(typ);
-  return pt->getElementType() == llvmInt8Type_;
-}
-
-bool TypeManager::isPtrToArrayOf(llvm::Type *typ, llvm::Type *arElmTyp)
-{
-  if (! typ->isPointerTy())
-    return false;
-  llvm::PointerType *pt = llvm::cast<llvm::PointerType>(typ);
-  llvm::Type *elt = pt->getElementType();
-  if (! elt->isArrayTy())
-    return false;
-  llvm::ArrayType *llat = llvm::cast<llvm::ArrayType>(elt);
-  llvm::Type *aelt = llat->getElementType();
-  if (aelt == arElmTyp)
-    return true;
-  if (isCircularFunctionType(aelt) && isCircularFunctionType(arElmTyp))
-    return true; // TODO: check they are same circular function type?
-  return false;
-}
-
-bool TypeManager::fcnPointerCompatible(llvm::Type *left,
-                                       llvm::Type *right,
-                                       std::set<llvm::Type *> &visited)
-{
-  // Allow for pointer-to-fp and func-desc matching
-  bool leftFPD = isPtrToFuncType(left) || isPtrToVoidType(left);
-  bool rightFPD = isPtrToFuncType(right) || isPtrToVoidType(right);
-  if (leftFPD && rightFPD)
-    return true;
-
-  bool visleft = (visited.find(left) != visited.end());
-  bool visright = (visited.find(right) != visited.end());
-  if (visleft != visright)
-    return false;
-  if (visleft)
-    return true;
-  visited.insert(left);
-  visited.insert(right);
-
-  // Compare type ID, children, etc.
-  if (left->getTypeID() != right->getTypeID())
-    return false;
-
-  // For pointer types, visit pointed-to elements
-  if (left->isPointerTy()) {
-    llvm::PointerType *ptl = llvm::cast<llvm::PointerType>(left);
-    llvm::PointerType *ptr = llvm::cast<llvm::PointerType>(right);
-    llvm::Type *eltl = ptl->getElementType();
-    llvm::Type *eltr = ptr->getElementType();
-    return fcnPointerCompatible(eltl, eltr, visited);
-  }
-
-  // For aggregate types, compare children.
-  if (left->isAggregateType()) {
-    unsigned leftnct = left->getNumContainedTypes();
-    unsigned rightnct = right->getNumContainedTypes();
-    if (leftnct != rightnct)
-      return false;
-    for (unsigned cti = 0; cti < leftnct; cti++) {
-      llvm::Type *leftchild = left->getContainedType(cti);
-      llvm::Type *rightchild = right->getContainedType(cti);
-      if (!fcnPointerCompatible(leftchild, rightchild, visited))
-        return false;
-    }
-    return true;
-  } else {
-    // For non-aggregate types, we expect underlying llvm types to match
-    return (left == right);
-  }
-}
-
 std::string TypeManager::typToString(Btype *typ)
 {
   std::map<Btype *, std::string> smap;
@@ -1750,7 +1612,7 @@ TypeManager::typToStringRec(Btype *typ, std::map<Btype *, std::string> &smap)
       assert(!bpt->isPlaceholder());
 
       // handle circular pointer types
-      auto cpit = circularPointerTypes_.find(typ->type());
+      auto cpit = circularPointerTypes_.find(typ);
       if (cpit != circularPointerTypes_.end()) {
         std::string s;
         llvm::raw_string_ostream os(s);

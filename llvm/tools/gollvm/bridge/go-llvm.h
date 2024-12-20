@@ -490,7 +490,7 @@ public:
                                       Location location);
 
   // Field GEP helper
-  llvm::Value *makeFieldGEP(unsigned fieldIndex,
+  llvm::Value *makeFieldGEP(unsigned fieldIndex, llvm::Type *sty,
                             llvm::Value *sptr);
 
   // Array indexing GEP helper
@@ -499,8 +499,7 @@ public:
                                  llvm::Value *sptr);
 
   // Pointer indexing GEP helper
-  llvm::Value *makePointerOffsetGEP(llvm::PointerType *pt,
-                                    llvm::Value *idx,
+  llvm::Value *makePointerOffsetGEP(Btype *pt, llvm::Value *idx,
                                     llvm::Value *sptr);
 
   // Assignment helper
@@ -616,39 +615,6 @@ public:
   // Check a vector of Bstatement's to see if any are the
   // error statement, returning TRUE if so.
   bool stmtVectorHasError(const std::vector<Bstatement *> &stmts);
-
-  // Converts value "src" for assignment to container of type
-  // "dstType" in assignment-like contexts. This helper exists to help
-  // with cases where the frontend is creating an assignment of form
-  // "X = Y" where X and Y's types are considered matching by the
-  // front end, but are non-matching in an LLVM context. For example,
-  //
-  //   type Ifi func(int) int
-  //   ...
-  //   var fp Ifi = myfunctionfoobar
-  //
-  // Here the right hand side will come out as pointer-to-descriptor,
-  // whereas variable "fp" will have type "pointer to functon", which are
-  // not the same. Another example is assignments involving nil, e.g.
-  //
-  //   var ip *float32
-  //   ...
-  //   ip = nil
-  //
-  // The type of the right hand side of the assignment will be a
-  // generic "*i64" as opposed to "*float32", since the backend
-  // "nil_pointer_expression" does not allow for creation of nil
-  // pointers of specific types.
-  //
-  // Return value will be a new convert Bexpression if a convert is
-  // needed, NULL otherwise.
-  llvm::Value *convertForAssignment(Bexpression *src,
-                                    llvm::Type *dstToType);
-  // lower-level version of the routine above
-  llvm::Value *convertForAssignment(Btype *srcType,
-                                    llvm::Value *srcVal,
-                                    llvm::Type *dstToType,
-                                    BlockLIRBuilder *builder);
 
 
   // Apply type conversion for a binary operation. This helper exists

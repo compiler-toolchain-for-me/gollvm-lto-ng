@@ -74,10 +74,9 @@ std::string Bfunction::namegen(const std::string &tag)
   return abiOracle_->tm()->tnamegen(tag);
 }
 
-llvm::Instruction *Bfunction::addAlloca(llvm::Type *typ,
-                                        const std::string &name)
-{
+llvm::Instruction *Bfunction::addAlloca(Btype *bty, const std::string &name) {
   llvm::Instruction *insBefore = nullptr;
+  llvm::Type *typ = bty->type();
   TypeManager *tm = abiOracle_->tm();
   llvm::Align aaAlign = tm->datalayout()->getABITypeAlign(typ);
   llvm::Value *aaSize = nullptr;
@@ -131,8 +130,7 @@ void Bfunction::lazyAbiSetup()
         // Seems weird to create a zero-sized alloca(), but it should
         // simplify things in that we can avoid having a Bvariable with a
         // null value.
-        llvm::Type *llpt = paramTypes[idx]->type();
-        llvm::Instruction *inst = addAlloca(llpt, "");
+        llvm::Instruction *inst = addAlloca(paramTypes[idx], "");
         paramValues_.push_back(inst);
         break;
       }
@@ -148,8 +146,7 @@ void Bfunction::lazyAbiSetup()
         break;
       }
       case ParmDirect: {
-        llvm::Type *llpt = paramTypes[idx]->type();
-        llvm::Instruction *inst = addAlloca(llpt, "");
+        llvm::Instruction *inst = addAlloca(paramTypes[idx], "");
         paramValues_.push_back(inst);
         if (paramInfo.attr() == AttrSext)
           arguments_[argIdx]->addAttr(llvm::Attribute::SExt);
@@ -229,7 +226,7 @@ Bvariable *Bfunction::staticChainVariable(const std::string &name,
   // Create the spill slot for the param.
   std::string spname(name);
   spname += ".addr";
-  llvm::Instruction *inst = addAlloca(btype->type(), spname);
+  llvm::Instruction *inst = addAlloca(btype, spname);
   assert(chainVal_);
   assert(llvm::isa<llvm::Argument>(chainVal_));
   chainVal_ = inst;
@@ -260,7 +257,7 @@ Bvariable *Bfunction::localVariable(const std::string &name,
     // to share the same alloca instruction.
     inst = llvm::cast<llvm::Instruction>(declVar->value());
   } else {
-    inst = addAlloca(btype->type(), name);
+    inst = addAlloca(btype, name);
   }
   if (is_address_taken) {
     llvm::Instruction *alloca = inst;
@@ -285,12 +282,7 @@ Bvariable *Bfunction::localVariable(const std::string &name,
 
 llvm::Value *Bfunction::createTemporary(Btype *btype, const std::string &tag)
 {
-  return createTemporary(btype->type(), tag);
-}
-
-llvm::Value *Bfunction::createTemporary(llvm::Type *typ, const std::string &tag)
-{
-  return addAlloca(typ, tag);
+  return addAlloca(btype, tag);
 }
 
 // This implementation uses an alloca instruction as a placeholder
@@ -378,13 +370,6 @@ unsigned Bfunction::genArgSpill(Bvariable *paramVar,
     llvm::Argument *arg = arguments_[paramInfo.sigOffset()];
     assert(sploc->getType()->isPointerTy());
     llvm::PointerType *llpt = llvm::cast<llvm::PointerType>(sploc->getType());
-    if (paramInfo.abiType()->isVectorTy() ||
-        arg->getType() != llpt->getElementType()) {
-      std::string tag(namegen("cast"));
-      llvm::Type *ptv = llvm::PointerType::get(paramInfo.abiType(), 0);
-      llvm::Value *bitcast = builder.CreateBitCast(sploc, ptv, tag);
-      sploc = bitcast;
-    }
     llvm::Instruction *si = builder.CreateStore(arg, sploc);
     paramVar->setInitializer(si);
     spillInstructions->appendInstructions(builder.instructions());
@@ -457,11 +442,11 @@ void Bfunction::genProlog(llvm::BasicBlock *entry)
   // Append allocas for local variables
   // FIXME: create lifetime annotations
   for (auto aa : allocas_)
-    aa->insertAfter(&entry->back());
+    aa->insertBefore(*entry, entry->end());
 
   // Param spills
   for (auto sp : spills.instructions())
-    sp->insertAfter(&entry->back());
+    sp->insertBefore(*entry, entry->end());
 
   // Debug meta-data generation needs to know the position at which a
   // parameter variable is available for inspection -- this is
@@ -496,11 +481,11 @@ void Bfunction::fixupProlog(llvm::BasicBlock *entry,
   // we insert any new temps into the start of the block.
   if (! temps.empty())
     for (auto ai : temps) {
-      ai->insertBefore(&entry->front());
+      ai->insertInto(entry, entry->begin());
       if (auto *ascast = llvm::dyn_cast<llvm::AddrSpaceCastInst>(ai)) {
         llvm::Value *op = ascast->getPointerOperand();
         assert(llvm::isa<llvm::AllocaInst>(op));
-        llvm::cast<llvm::Instruction>(op)->insertBefore(&entry->front());
+        llvm::cast<llvm::Instruction>(op)->insertInto(entry, entry->begin());
       }
     }
 }

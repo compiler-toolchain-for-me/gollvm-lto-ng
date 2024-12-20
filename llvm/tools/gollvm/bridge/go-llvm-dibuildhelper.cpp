@@ -180,8 +180,12 @@ void DIBuildHelper::insertVarDecl(Bvariable *var,
 
   assert(! llvm::isa<llvm::BranchInst>(insertionPoint));
   assert(insertionPoint != insertionPoint->getParent()->getTerminator());
-  dibuilder().insertDeclare(var->value(), dilv, expr, vloc,
-                            insertionPoint->getNextNode());
+  if (insertionPoint->getNextNode())
+    dibuilder().insertDeclare(var->value(), dilv, expr, vloc,
+                              insertionPoint->getNextNode());
+  else
+    dibuilder().insertDeclare(var->value(), dilv, expr, vloc,
+                              insertionPoint->getParent());
 }
 
 void DIBuildHelper::endFunction(Bfunction *function)
