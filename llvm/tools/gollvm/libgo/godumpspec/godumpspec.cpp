@@ -26,6 +26,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/DebugInfo/DIContext.h"
+#include "llvm/DebugInfo/DWARF/DWARFCompileUnit.h"
 #include "llvm/DebugInfo/DWARF/DWARFContext.h"
 #include "llvm/Object/Binary.h"
 #include "llvm/Object/ObjectFile.h"
