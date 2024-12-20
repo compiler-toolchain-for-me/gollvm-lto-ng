@@ -413,10 +413,7 @@ llvm::Function *Llvm_backend::dummyPersonalityFunction()
 Bfunction *Llvm_backend::createIntrinsicFcn(const std::string &name,
                                             llvm::Function *fcn)
 {
-  llvm::PointerType *llpft =
-      llvm::cast<llvm::PointerType>(fcn->getType());
-  llvm::FunctionType *llft =
-      llvm::cast<llvm::FunctionType>(llpft->getElementType());
+  llvm::FunctionType *llft = fcn->getFunctionType();
   BFunctionType *fcnType = makeAuxFcnType(llft);
   Location pdcl = linemap()->get_predeclared_location();
   Bfunction *bfunc = new Bfunction(fcn, fcnType, name, name, pdcl,
@@ -568,18 +565,10 @@ Bexpression *Llvm_backend::genCircularConversion(Btype *toType,
   llvm::Type *vt = val->getType();
   assert(vt->isPointerTy());
   llvm::Type *llToType = toType->type();
-  if (expr->varExprPending()) {
-    llvm::Type *et = expr->btype()->type();
-    if (vt->getPointerElementType() == et)
-      llToType = llvm::PointerType::get(llToType, vt->getPointerAddressSpace());
-  }
   if (vt == llToType)
     return expr;
 
-  std::string tag(namegen("cast"));
-  LIRBuilder builder(context_, llvm::ConstantFolder());
-  llvm::Value *bitcast = builder.CreatePointerBitCastOrAddrSpaceCast(val, llToType, tag);
-  return nbuilder_.mkConversion(toType, bitcast, expr, loc);
+  return nbuilder_.mkConversion(toType, val, expr, loc);
 }
 
 Bexpression *Llvm_backend::genLoad(Bexpression *expr,
@@ -609,18 +598,9 @@ Bexpression *Llvm_backend::genLoad(Bexpression *expr,
   }
 
   llvm::Value *spaceVal = space->value();
-  if (spaceVal == nil_pointer_expression()->value()) {
-    llvm::Function *dummyFcn = errorFunction_->function();
-    BlockLIRBuilder builder(dummyFcn, this);
-    llvm::Type *spaceTyp = llvm::PointerType::get(loadResultType->type(), addressSpace_);
-    std::string tag(namegen("cast"));
-    spaceVal = builder.CreateBitCast(spaceVal, spaceTyp, tag);
-    space->appendInstructions(builder.instructions());
-  }
-
-  llvm::PointerType *llpt =
-      llvm::cast<llvm::PointerType>(spaceVal->getType());
-  llvm::Type *llrt = llpt->getElementType();
+  llvm::Type *llrt = loadResultType->type();
+  if (auto *ai = llvm::dyn_cast<llvm::AllocaInst>(spaceVal))
+    llrt = ai->getAllocatedType();
 
   // If this type meets our criteria (composite/aggregate whose
   // size is above a certain threshhold) then assume that the
@@ -632,13 +612,14 @@ Bexpression *Llvm_backend::genLoad(Bexpression *expr,
     std::string ldname(tag);
     ldname += ".ld";
     ldname = namegen(ldname);
-    llvm::Type *vt = spaceVal->getType()->getPointerElementType();
+    if ("tmpv.70.ld.0" == ldname) {
+      int bbb = 1;
+    }
     llvm::Instruction *insBefore = nullptr;
-    llvm::Align ldAlign = datalayout_->getABITypeAlign(vt);
+    llvm::Align ldAlign = datalayout_->getABITypeAlign(llrt);
     bool isVolatile = false;
-    llvm::Instruction *loadInst = new llvm::LoadInst(vt, spaceVal, ldname,
-                                                     isVolatile, ldAlign,
-                                                     insBefore);
+    llvm::Instruction *loadInst = new llvm::LoadInst(
+        llrt, spaceVal, ldname, isVolatile, ldAlign, insBefore);
     rval = nbuilder_.mkDeref(loadResultType, loadInst, space, loc);
     rval->appendInstruction(loadInst);
   } else {
@@ -879,17 +860,6 @@ llvm::Value *Llvm_backend::genStore(BlockLIRBuilder *builder,
 
   // Decide whether we want a simple store instruction or a memcpy.
   if (! useCopyForLoadStore(srcType)) {
-
-    if (srcVal->getType()->isPointerTy()) {
-      llvm::PointerType *dstpt =
-          llvm::cast<llvm::PointerType>(dstType);
-      srcVal = convertForAssignment(srcType, srcVal,
-                                    dstpt->getElementType(), builder);
-    }
-
-    // At this point the types should agree
-    llvm::PointerType *dpt = llvm::cast<llvm::PointerType>(dstType);
-    assert(srcVal->getType() == dpt->getElementType());
 
     // Create and return store
     return builder->CreateStore(srcVal, dstLoc);
@@ -1173,13 +1143,13 @@ Bexpression *Llvm_backend::integer_constant_expression(Btype *btype,
   BIntegerType *bit = btype->castToBIntegerType();
   if (bit->isUnsigned()) {
     uint64_t val = checked_convert_mpz_to_int<uint64_t>(mpz_val);
-    llvm::APInt apiv(bit->bits(), val);
+    llvm::APInt apiv(bit->bits(), val, false, true);
     llvm::Constant *lval = llvm::ConstantInt::get(btype->type(), apiv);
     Bexpression *bconst = nbuilder_.mkConst(btype, lval);
     return makeGlobalExpression(bconst, lval, btype, Location());
   } else {
     int64_t val = checked_convert_mpz_to_int<int64_t>(mpz_val);
-    llvm::APInt apiv(bit->bits(), val, true);
+    llvm::APInt apiv(bit->bits(), val, true, true);
     llvm::Constant *lval = llvm::ConstantInt::get(btype->type(), apiv);
     Bexpression *bconst = nbuilder_.mkConst(btype, lval);
     return makeGlobalExpression(bconst, lval, btype, Location());
@@ -2160,7 +2130,7 @@ Llvm_backend::makeModuleVar(Btype *btype,
   llvm::Value *old = nullptr;
   if (glob && glob->getLinkage() == linkage) {
     // A global variable with same name already exists.
-    if (glob->getType()->getElementType() == btype->type()) {
+    if (glob->getValueType() == btype->type()) {
       if (isExtInit == MV_NotExternallyInitialized) {
         // A definition overrides a declaration for external var.
         glob->setExternallyInitialized(false);
@@ -2240,8 +2210,7 @@ Llvm_backend::makeModuleVar(Btype *btype,
   // Fix up old declaration if there is one
   if (old) {
     assert(llvm::isa<llvm::PointerType>(old->getType()));
-    llvm::Type *declTyp =
-        llvm::cast<llvm::PointerType>(old->getType())->getElementType();
+    llvm::Type *declTyp = llvm::cast<llvm::GlobalValue>(old)->getValueType();
     llvm::Constant *newDecl = module_->getOrInsertGlobal(gname, declTyp);
     old->replaceAllUsesWith(newDecl);
     // NB: previously we had a call to old->deleteValue() here, but this
@@ -2370,6 +2339,9 @@ Bvariable *Llvm_backend::temporary_variable(Bfunction *function,
   if (binit == errorExpression())
     return errorVariable_.get();
   std::string tname(namegen("tmpv"));
+  if (tname == "tmpv.70") {
+    int brk = 1;
+  }
   bool is_address_taken = ((flags & Backend::variable_address_is_taken) != 0);
   Bvariable *tvar = local_variable(function, tname, btype, nullptr,
                                    is_address_taken, location);
@@ -2535,7 +2507,7 @@ Bvariable *Llvm_backend::immutable_struct_reference(const std::string &name,
   // A global with the same name already declared?
   llvm::GlobalVariable *glob = module_->getGlobalVariable(gname);
   if (glob) {
-    assert(glob->getType()->getElementType() == btype->type());
+    assert(glob->getValueType() == btype->type());
     auto it = valueVarMap_.find(glob);
     assert(it != valueVarMap_.end());
     Bvariable *bv = it->second;
@@ -2790,12 +2762,12 @@ Bfunction *Llvm_backend::function(Btype *fntype, const std::string &name,
          fns == "runtime.mapaccess2_fast64" ||
          fns == "runtime.mapaccess2_faststr" ||
          fns == "runtime.mapaccess2_fat"))
-      fcn->addFnAttr(llvm::Attribute::ReadOnly);
+      fcn->setOnlyReadsMemory();
 
     // memcmp-like.
     if (fns == "runtime.memequal" ||
         fns == "runtime.cmpstring") {
-      fcn->addFnAttr(llvm::Attribute::ReadOnly);
+      fcn->setOnlyReadsMemory();
       fcn->setOnlyAccessesArgMemory();
     }
 
@@ -3158,10 +3130,7 @@ GenBlocks::rewriteToMayThrowCall(llvm::CallInst *call,
   // possibly-excepting call with landing pad.
   llvm::SmallVector<llvm::Value *, 8> args(call->arg_begin(), call->arg_end());
   llvm::Value *callop = call->getCalledOperand();
-  llvm::PointerType *pft =
-      llvm::cast<llvm::PointerType>(callop->getType());
-  llvm::FunctionType *fty =
-      llvm::cast<llvm::FunctionType>(pft->getElementType());
+  llvm::FunctionType *fty = call->getFunctionType();
   llvm::InvokeInst *invcall =
       llvm::InvokeInst::Create(fty, callop, contbb, padbb, args,
                                call->getName());
@@ -3290,7 +3259,7 @@ llvm::BasicBlock *GenBlocks::walkExpr(llvm::BasicBlock *curblock,
       changed = true;
     if (dibuildhelper_)
       dibuildhelper_->processExprInst(containingStmt, expr, inst);
-    inst->insertAfter(&curblock->back());
+    inst->insertBefore(*curblock, curblock->end());
     curblock = pair.second;
     newinsts.push_back(inst);
 
@@ -3300,7 +3269,7 @@ llvm::BasicBlock *GenBlocks::walkExpr(llvm::BasicBlock *curblock,
       // current block.
       LIRBuilder builder(context_, llvm::ConstantFolder());
       llvm::Instruction *unreachable = builder.CreateUnreachable();
-      unreachable->insertAfter(&curblock->back());
+      unreachable->insertBefore(*curblock, curblock->end());
       curblock = nullptr;
       changed = true;
 
@@ -3376,7 +3345,7 @@ llvm::BasicBlock *GenBlocks::genIf(Bstatement *ifst,
     else {
       LIRBuilder builder(context_, llvm::ConstantFolder());
       llvm::Instruction *unreachable = builder.CreateUnreachable();
-      unreachable->insertAfter(&tsucc->back());
+      unreachable->insertBefore(*tsucc, tsucc->end());
     }
   }
 
@@ -3389,7 +3358,7 @@ llvm::BasicBlock *GenBlocks::genIf(Bstatement *ifst,
       else {
         LIRBuilder builder(context_, llvm::ConstantFolder());
         llvm::Instruction *unreachable = builder.CreateUnreachable();
-        unreachable->insertAfter(&fsucc->back());
+        unreachable->insertBefore(*fsucc, fsucc->end());
       }
     }
   }
@@ -3584,12 +3553,12 @@ void GenBlocks::genDeferReturn(llvm::BasicBlock *curblock)
       if (&inst == term)
         break; // terminator is handled below
       llvm::Instruction *c = cloneInstruction(&inst, argMap);
-      c->insertAfter(&curblock->back());
+      c->insertBefore(*curblock, curblock->end());
     }
     if (llvm::isa<llvm::InvokeInst>(term)) {
       // This is the call to DEFERRETURN. Copy this then we're done.
       llvm::Instruction *c = cloneInstruction(term, argMap);
-      c->insertAfter(&curblock->back());
+      c->insertBefore(*curblock, curblock->end());
       break;
     }
     // By construction it should be linear code.
@@ -3742,7 +3711,8 @@ llvm::BasicBlock *GenBlocks::populateFinallyBlock(llvm::BasicBlock *finBB,
   // Populate resume block
   builder.SetInsertPoint(finResBB);
   std::string ename(be_->namegen("excv"));
-  llvm::LoadInst *exload = builder.CreateLoad(extmp->getType()->getPointerElementType(), extmp, ename);
+  llvm::Type *vty = llvm::cast<llvm::AllocaInst>(extmp)->getAllocatedType();
+  llvm::LoadInst *exload = builder.CreateLoad(vty, extmp, ename);
   builder.CreateResume(exload);
 
   return finRetBB;
@@ -4027,7 +3997,7 @@ void Llvm_backend::fixupEpilogBlock(Bfunction *bfunction,
       llvm::Value *zv = llvm::Constant::getNullValue(rtyp);
       ri = builder.CreateRet(zv);
     }
-    ri->insertAfter(&epilog->back());
+    ri->insertBefore(*epilog, epilog->end());
   }
 }
 

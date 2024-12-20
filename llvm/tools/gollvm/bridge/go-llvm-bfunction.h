@@ -124,7 +124,6 @@ public:
 
   // Return an alloca temporary of the specified type.
   llvm::Value *createTemporary(Btype *btype, const std::string &tag);
-  llvm::Value *createTemporary(llvm::Type *type, const std::string &tag);
 
   // If the function return value is passing via memory instead of
   // directly, this function returns the location into which the
@@ -155,7 +154,7 @@ public:
 
   // Create an alloca with the specified type. The alloca is recorded
   // in a list so that it can be picked up during prolog generation.
-  llvm::Instruction *addAlloca(llvm::Type *vtyp, const std::string &name);
+  llvm::Instruction *addAlloca(Btype *typ, const std::string &name);
 
   // Given an LLVM value, return the Bvariable we created to wrap it (either
   // local var or parameter var).
