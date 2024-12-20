@@ -121,8 +121,7 @@ Bexpression *Llvm_backend::materializeAddress(Bexpression *addrExpr)
   assert(valtyp->isPointerTy());
   if (valtyp->getPointerAddressSpace() != addressSpace_) {
     llvm::Type *typ =
-        llvm::PointerType::get(valtyp->getPointerElementType(),
-                               addressSpace_);
+        llvm::PointerType::get(valtyp->getContext(), addressSpace_);
     val = new llvm::AddrSpaceCastInst(val, typ, "ascast");
   }
 
@@ -176,9 +175,8 @@ Bexpression *Llvm_backend::materializeConversion(Bexpression *convExpr)
     }
     if (lvalue || useCopyForLoadStore(type->type())) {
       llvm::Type *et = expr->btype()->type();
-      if (valType->isPointerTy() &&
-          valType->getPointerElementType() == et)
-        toType = llvm::PointerType::get(toType, addressSpace_);
+      if (valType->isPointerTy())
+        toType = llvm::PointerType::get(toType->getContext(), addressSpace_);
     }
   }
 
@@ -230,8 +228,7 @@ Bexpression *Llvm_backend::materializeConversion(Bexpression *convExpr)
     if (val->getType()->getPointerAddressSpace() != 0) {
       // We are using non-integral pointer. Cast to address space 0
       // before casting to int.
-      llvm::Type *et = val->getType()->getPointerElementType();
-      llvm::Type *pt = llvm::PointerType::get(et, 0);
+      llvm::Type *pt = llvm::PointerType::get(val->getContext(), 0);
       std::string tname(namegen("ascast"));
       val = builder.CreateAddrSpaceCast(val, pt, tname);
       expr = nbuilder_.mkConversion(type, val, expr, location);
@@ -248,8 +245,7 @@ Bexpression *Llvm_backend::materializeConversion(Bexpression *convExpr)
     if (toType->getPointerAddressSpace() != 0) {
       // We are using non-integral pointer. Cast to address space 0
       // first.
-      llvm::Type *et = toType->getPointerElementType();
-      pt = llvm::PointerType::get(et, 0);
+      pt = llvm::PointerType::get(toType->getContext(), 0);
     }
     std::string tname(namegen("itpcast"));
     llvm::Value *itpcast = builder.CreateIntToPtr(val, pt, tname);
@@ -342,14 +338,13 @@ Bexpression *Llvm_backend::materializeConversion(Bexpression *convExpr)
   return rval;
 }
 
-llvm::Value *Llvm_backend::makePointerOffsetGEP(llvm::PointerType *llpt,
-                                                llvm::Value *idxval,
-                                                llvm::Value *sptr)
-{
+llvm::Value *Llvm_backend::makePointerOffsetGEP(Btype *pt, llvm::Value *idxval,
+                                                llvm::Value *sptr) {
   LIRBuilder builder(context_, llvm::ConstantFolder());
   llvm::SmallVector<llvm::Value *, 1> elems(1);
   elems[0] = idxval;
-  llvm::Value *val = builder.CreateGEP(llpt->getElementType(), sptr, elems, namegen("ptroff"));
+  llvm::Type *eltTy = pt->castToBPointerType()->toType()->type();
+  llvm::Value *val = builder.CreateGEP(eltTy, sptr, elems, namegen("ptroff"));
   return val;
 }
 
@@ -365,12 +360,10 @@ llvm::Value *Llvm_backend::makeArrayIndexGEP(llvm::ArrayType *llat,
   return val;
 }
 
-llvm::Value *Llvm_backend::makeFieldGEP(unsigned fieldIndex,
-                                        llvm::Value *sptr)
-{
+llvm::Value *Llvm_backend::makeFieldGEP(unsigned fieldIndex, llvm::Type *sty,
+                                        llvm::Value *sptr) {
   assert(sptr->getType()->isPointerTy());
-  llvm::PointerType *srcTyp = llvm::cast<llvm::PointerType>(sptr->getType());
-  llvm::StructType *llst = llvm::cast<llvm::StructType>(srcTyp->getElementType());
+  llvm::StructType *llst = llvm::cast<llvm::StructType>(sty);
   LIRBuilder builder(context_, llvm::ConstantFolder());
   assert(fieldIndex < llst->getNumElements());
   std::string tag(namegen("field"));
@@ -401,7 +394,7 @@ Bexpression *Llvm_backend::materializeStructField(Bexpression *fieldExpr)
   if (bstruct->isConstant())
     fval = llvm::cast<llvm::Constant>(sval)->getAggregateElement(index);
   else
-    fval = makeFieldGEP(index, sval);
+    fval = makeFieldGEP(index, llt, sval);
   Btype *bft = elementTypeByIndex(bstruct->btype(), index);
 
   // Wrap result in a Bexpression
@@ -1024,10 +1017,8 @@ Bexpression *Llvm_backend::materializePointerOffset(Bexpression *ptroffExpr)
   base = resolveVarContext(base);
 
   // Construct an appropriate GEP
-  llvm::PointerType *llpt =
-      llvm::cast<llvm::PointerType>(base->btype()->type());
   llvm::Value *gep =
-      makePointerOffsetGEP(llpt, index->value(), base->value());
+      makePointerOffsetGEP(base->btype(), index->value(), base->value());
 
   // Wrap in a Bexpression
   Bexpression *rval = nbuilder_.mkPointerOffset(base->btype(), gep, base,
@@ -1192,7 +1183,7 @@ Llvm_backend::genCallMarshallArgs(const std::vector<Bexpression *> &fn_args,
       if (paramInfo.attr() == AttrByVal && vt->getPointerAddressSpace() != 0) {
         // We pass a stack address, which is always in address space 0.
         std::string castname(namegen("ascast"));
-        llvm::Type *pt = llvm::PointerType::get(vt->getPointerElementType(), 0);
+        llvm::Type *pt = llvm::PointerType::get(vt->getContext(), 0);
         val = builder.CreateAddrSpaceCast(val, pt, castname);
       }
 
@@ -1254,14 +1245,6 @@ Llvm_backend::genCallMarshallArgs(const std::vector<Bexpression *> &fn_args,
         continue;
       }
       // Passing a single 8-byte-or-less argument.
-
-      // Apply any necessary pointer type conversions.
-      if (val->getType()->isPointerTy() && ctx == VE_rvalue) {
-        llvm::FunctionType *llft =
-            llvm::cast<llvm::FunctionType>(state.calleeFcnType->type());
-        llvm::Type *paramTyp = llft->getParamType(paramInfo.sigOffset());
-        val = convertForAssignment(resarg, paramTyp);
-      }
 
       // Apply any necessary sign-extensions or zero-extensions.
       if (paramInfo.abiType()->isIntegerTy()) {
@@ -1603,152 +1586,6 @@ Bexpression *Llvm_backend::materializeCall(Bexpression *callExpr)
     genCallEpilog(state, call, rval);
 
   return rval;
-}
-
-llvm::Value *
-Llvm_backend::convertForAssignment(Bexpression *src,
-                                   llvm::Type *dstToType)
-{
-  if (src->value()->getType() == dstToType)
-    return src->value();
-
-  llvm::Function *dummyFcn = errorFunction_->function();
-  BlockLIRBuilder builder(dummyFcn, this);
-  llvm::Value *val = convertForAssignment(src->btype(), src->value(),
-                                          dstToType, &builder);
-  src->appendInstructions(builder.instructions());
-  return val;
-}
-
-llvm::Value *
-Llvm_backend::convertForAssignment(Btype *srcBType,
-                                   llvm::Value *srcVal,
-                                   llvm::Type *dstToType,
-                                   BlockLIRBuilder *builder)
-{
-  llvm::Type *srcType = srcVal->getType();
-
-  if (dstToType == srcType)
-    return srcVal;
-
-  // Case 1: handle discrepancies between representations of function
-  // descriptors. All front end function descriptor types are structs
-  // with a single field, however this field can sometimes be a pointer
-  // to function, and sometimes it can be of uintptr type.
-  bool srcPtrToFD = isPtrToFuncDescriptorType(srcType);
-  bool dstPtrToFD = isPtrToFuncDescriptorType(dstToType);
-  if (srcPtrToFD && dstPtrToFD) {
-    std::string tag(namegen("cast"));
-    llvm::Value *bitcast = builder->CreateBitCast(srcVal, dstToType, tag);
-    return bitcast;
-  }
-
-  // Case 2: handle circular function types.
-  bool dstCircFunc = isCircularFunctionType(dstToType);
-  bool srcCircFunc = isCircularFunctionType(srcType);
-  bool srcFuncPtr = isPtrToFuncType(srcType);
-  if (((srcPtrToFD || srcFuncPtr || srcCircFunc) && dstCircFunc) ||
-       (srcCircFunc && dstPtrToFD)) {
-    std::string tag(namegen("cast"));
-    llvm::Value *bitcast = builder->CreateBitCast(srcVal, dstToType, tag);
-    return bitcast;
-  }
-
-  // Case 3: handle raw function pointer assignment (frontend will
-  // sometimes take a function pointer and assign it to "void *" without
-  // an explicit conversion).
-  bool dstPtrToVoid = isPtrToVoidType(dstToType);
-  if (dstPtrToVoid && srcFuncPtr) {
-    std::string tag(namegen("cast"));
-    llvm::Value *bitcast = builder->CreateBitCast(srcVal, dstToType, tag);
-    return bitcast;
-  }
-
-  // Case 4: in some cases when calling a function (for example, __gogo)
-  // the front end will pass a raw function vale in place of a function
-  // descriptor. Allow this case.
-  if (dstPtrToFD && srcFuncPtr) {
-    std::string tag(namegen("cast"));
-    llvm::Value *bitcast =
-        builder->CreatePointerBitCastOrAddrSpaceCast(srcVal, dstToType, tag);
-    return bitcast;
-  }
-
-  // Case 5: handle polymorphic nil pointer expressions-- these are
-  // generated without a type initially, so we need to convert them
-  // to the appropriate type if they appear in an assignment context.
-  if (srcVal == nil_pointer_expression()->value()) {
-    std::string tag(namegen("cast"));
-    llvm::Value *bitcast = builder->CreateBitCast(srcVal, dstToType, tag);
-    return bitcast;
-  }
-
-  // Case 6: the code that creates interface values stores pointers of
-  // various flavors into i8*. Ideally it would be better to insert
-  // forced type conversions in the FE, but for now we allow this case.
-  bool srcPtrToIface = isPtrToIfaceStructType(srcType);
-  if (dstPtrToVoid && srcPtrToIface) {
-    std::string tag(namegen("cast"));
-    llvm::Value *bitcast = builder->CreateBitCast(srcVal, dstToType, tag);
-    return bitcast;
-  }
-
-  // Case 7: when creating slice values it's common for the frontend
-  // to mix pointers and arrays, e.g. assign "[3 x i64]*" to "i64**".
-  // Allow this sort of conversion.
-  llvm::Type *elt =
-      (dstToType->isPointerTy() ?
-       llvm::cast<llvm::PointerType>(dstToType)->getElementType() : nullptr);
-  if (elt && isPtrToArrayOf(srcType, elt)) {
-    std::string tag(namegen("cast"));
-    llvm::Value *bitcast = builder->CreateBitCast(srcVal, dstToType, tag);
-    return bitcast;
-  }
-
-  // Case 8: also when creating slice values it's common for the
-  // frontend to assign pointer-to-X to unsafe.Pointer (and vice versa)
-  // without an explicit cast. Allow this for now.
-  if ((dstToType == llvmPtrType() && llvm::isa<llvm::PointerType>(srcType)) ||
-      (srcType == llvmPtrType() && llvm::isa<llvm::PointerType>(dstToType))) {
-    std::string tag(namegen("cast"));
-    llvm::Value *bitcast = builder->CreatePointerBitCastOrAddrSpaceCast(srcVal, dstToType, tag);
-    return bitcast;
-  }
-
-  // Case 9: related to case 1 above, interface value expressions can
-  // contain C function pointers stored as "void *" instead of
-  // concrete pointer-to-function values. For example, consider a
-  // value V1 of the form
-  //
-  //       { { T1*, void* }, O* }
-  //
-  // where T1 is a type descriptor and O is an object; this value can
-  // sometimes be assigned to a location of type
-  //
-  //       { { T1*, F* }, O* }
-  //
-  // where F is a concrete C pointer-to-function (as opposed to "void*").
-  // Allow conversions of this sort for now.
-  std::set<llvm::Type *> visited;
-  if (fcnPointerCompatible(dstToType, srcType, visited)) {
-    std::string tag(namegen("cast"));
-    llvm::Value *bitcast =
-        builder->CreatePointerBitCastOrAddrSpaceCast(srcVal, dstToType, tag);
-    return bitcast;
-  }
-
-  // Case 10: circular pointer type (ex: type T *T; var p T; p = &p)
-  BPointerType *srcbpt = srcBType->castToBPointerType();
-  if (srcbpt) {
-    Btype *ctypconv = circularTypeAddrConversion(srcbpt->toType());
-    if (ctypconv != nullptr && ctypconv->type() == dstToType) {
-      std::string tag(namegen("cast"));
-      llvm::Value *bitcast = builder->CreateBitCast(srcVal, dstToType, tag);
-      return bitcast;
-    }
-  }
-
-  return srcVal;
 }
 
 // Walk the specified expression and invoke setVarExprPending on

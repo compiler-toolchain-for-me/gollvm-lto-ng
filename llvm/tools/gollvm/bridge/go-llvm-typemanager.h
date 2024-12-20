@@ -74,9 +74,7 @@ class TypeManager {
   Btype *namedType(const std::string &, Btype *, Location);
   Btype *circularPointerType(Btype *, bool);
   bool isCircularPointerType(Btype *);
-  bool isCircularPointerType(llvm::Type *);
   bool isCircularFunctionType(Btype *);
-  bool isCircularFunctionType(llvm::Type *);
   int64_t typeSize(Btype *);
   int64_t typeAlignment(Btype *);
   int64_t typeFieldAlignment(Btype *);
@@ -205,24 +203,6 @@ class TypeManager {
   // found.
   bool addPlaceholderRefs(Btype *type);
 
-  // Helpers
-  bool isFuncDescriptorType(llvm::Type *typ);
-  bool isPtrToFuncDescriptorType(llvm::Type *typ);
-  bool isPtrToIfaceStructType(llvm::Type *typ);
-  bool isPtrToFuncType(llvm::Type *typ);
-  bool isPtrToVoidType(llvm::Type *typ);
-  bool isPtrToArrayOf(llvm::Type *ptyp, llvm::Type *arrayElmTyp);
-
-  // This helper looks at two LLVM types and does a structural
-  // comparison to determine if 'left' is equivalent to 'right' modulo
-  // discrepancies between raw function pointers and "void *" (or
-  // equivalent). This is to allow for cases where the front end will
-  // store a function pointer in a table or struct somewhere as "void
-  // *" instead of the precise function type.
-  bool fcnPointerCompatible(llvm::Type *left,
-                            llvm::Type *right,
-                            std::set<llvm::Type *> &visited);
-
   // If specified type is a pointer flagged as being a circular
   // type, return conversion needed on load from that type, or NULL
   // if the type is not circular.
@@ -337,15 +317,15 @@ class TypeManager {
 
   // Set of circular pointer types. These are pointers to opaque types that
   // are returned by the ::circular_pointer_type() method.
-  std::unordered_set<llvm::Type *> circularPointerTypes_;
+  std::unordered_set<Btype *> circularPointerTypes_;
 
   // Map from placeholder type to circular pointer type. Key is placeholder
   // pointer type, value is circular pointer type marker.
   std::unordered_map<Btype *, Btype *> circularPointerTypeMap_;
 
   // Maps for inserting conversions involving circular pointers.
-  std::unordered_map<llvm::Type *, Btype *> circularConversionLoadMap_;
-  std::unordered_map<llvm::Type *, Btype *> circularConversionAddrMap_;
+  std::unordered_map<Btype *, Btype *> circularConversionLoadMap_;
+  std::unordered_map<Btype *, Btype *> circularConversionAddrMap_;
 
   // Set of top-level circular function types.
   std::unordered_set<Btype *> circularFunctionPlaceholderTypes_;
@@ -353,7 +333,7 @@ class TypeManager {
   // This set holds the marker types returned for the self-referential
   // elements within a circular function type, also any resolved LLVM
   // function types created from placeholders.
-  std::unordered_set<llvm::Type *> circularFunctionTypes_;
+  std::unordered_set<Btype *> circularFunctionTypes_;
 
   // Name generation helper
   NameGen *nametags_;
