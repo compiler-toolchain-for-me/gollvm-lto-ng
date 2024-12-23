@@ -31,8 +31,7 @@ class BexprInserter : public llvm::IRBuilderDefaultInserter {
   void setDest(Bexpression *expr) { assert(!expr_); expr_ = expr; }
 
   void InsertHelper(llvm::Instruction *I, const llvm::Twine &Name,
-                    llvm::BasicBlock *BB,
-                    llvm::BasicBlock::iterator InsertPt) const {
+                    llvm::BasicBlock::iterator InsertPt) const override {
     assert(expr_);
     expr_->appendInstruction(I);
     I->setName(Name);

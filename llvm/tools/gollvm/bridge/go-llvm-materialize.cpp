@@ -647,7 +647,7 @@ Llvm_backend::convertForBinary(Operator op,
 
   // Case 3: shift with different sized operands (ex: int64(v) << uint8(3)).
   // Promote or demote shift amount operand to match width of left operand.
-  if ((op == OPERATOR_LSHIFT || op == OPERATOR_RSHIFT) &&
+  if ((op == OPERATOR_LSHIFT || op == OPERATOR_RSHIFT || op == OPERATOR_EQEQ) &&
       leftType != rightType) {
     BexprLIRBuilder builder(context_, right);
     llvm::IntegerType *leftITyp = llvm::cast<llvm::IntegerType>(leftType);
@@ -1463,6 +1463,13 @@ Bexpression *Llvm_backend::materializeCall(Bexpression *callExpr)
   std::vector<Bexpression *> cexprs =
       nbuilder_.extractChildenAndDestroy(callExpr);
   Bexpression *fn_expr = cexprs[0];
+  if (llvm::GlobalValue *gv =
+          llvm::dyn_cast_or_null<llvm::GlobalValue>(fn_expr->value())) {
+    if (gv->getName() == "runtime.fixalloc.alloc") {
+      int brk = 1;
+    }
+  }
+
   Bexpression *chain_expr = cexprs[1];
   std::vector<Bexpression *> fn_args;
   for (unsigned idx = 2; idx < cexprs.size(); ++idx) {

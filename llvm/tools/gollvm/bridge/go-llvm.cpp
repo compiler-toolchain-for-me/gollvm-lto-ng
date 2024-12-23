@@ -583,6 +583,7 @@ Bexpression *Llvm_backend::genLoad(Bexpression *expr,
   // pointer types.
   Bexpression *space = expr;
   Btype *loadResultType;
+  bool needs_extra_deref = false;
   if (btype) {
     loadResultType = btype;
     Btype *tctyp = circularTypeLoadConversion(expr->btype());
@@ -590,6 +591,12 @@ Bexpression *Llvm_backend::genLoad(Bexpression *expr,
       space = genCircularConversion(pointer_type(tctyp), expr, loc);
       loadResultType = tctyp;
     }
+    int flavor = expr->flavor();
+    if (!loadResultType->type()->isPointerTy())
+      needs_extra_deref =
+          ((flavor == N_Deref && expr->varExprPending()) || flavor == N_Var ||
+           flavor == N_StructField || flavor == N_Compound);
+
   } else {
     // Here we are resolving a pending var expression. The LLVM
     // value should already be pointer to the expression type.
@@ -599,8 +606,9 @@ Bexpression *Llvm_backend::genLoad(Bexpression *expr,
 
   llvm::Value *spaceVal = space->value();
   llvm::Type *llrt = loadResultType->type();
-  if (auto *ai = llvm::dyn_cast<llvm::AllocaInst>(spaceVal))
-    llrt = ai->getAllocatedType();
+  if (needs_extra_deref)
+    llrt = llvm::PointerType::get(
+        llrt, expr->btype()->type()->getPointerAddressSpace());
 
   // If this type meets our criteria (composite/aggregate whose
   // size is above a certain threshhold) then assume that the
@@ -612,9 +620,6 @@ Bexpression *Llvm_backend::genLoad(Bexpression *expr,
     std::string ldname(tag);
     ldname += ".ld";
     ldname = namegen(ldname);
-    if ("tmpv.70.ld.0" == ldname) {
-      int bbb = 1;
-    }
     llvm::Instruction *insBefore = nullptr;
     llvm::Align ldAlign = datalayout_->getABITypeAlign(llrt);
     bool isVolatile = false;
@@ -2161,16 +2166,12 @@ Llvm_backend::makeModuleVar(Btype *btype,
         // Here we are creating an external declaration
         // of a different type. We make a bitcast to the
         // new type.
-        llvm::Constant *decl = module_->getOrInsertGlobal(gname, btype->type());
-        bool addressTaken = true; // for now
-        Bvariable *bv =
-            new Bvariable(btype, location, gname, GlobalVar, addressTaken, decl);
-        assert(valueVarMap_.find(bv->value()) == valueVarMap_.end());
-        valueVarMap_[bv->value()] = bv;
-        if (genDebug == MV_GenDebug && dibuildhelper() && !errorCount_) {
-          bool exported = (linkage == llvm::GlobalValue::ExternalLinkage);
-          dibuildhelper()->processGlobal(bv, exported);
-        }
+
+        // Starting from LLVM-17 we're no longer using bitcasts
+        // for pointer types
+        auto it = valueVarMap_.find(glob);
+        assert(it != valueVarMap_.end());
+        Bvariable *bv = it->second;
         return bv;
       }
     }

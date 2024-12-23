@@ -535,15 +535,13 @@ static llvm::Value *atomicOrMaker(llvm::SmallVectorImpl<llvm::Value*> &args,
   return builder->CreateOr(old, args[1]);
 }
 
-static llvm::Value *atomicCasMaker(llvm::SmallVectorImpl<llvm::Value*> &args,
-                                   BlockLIRBuilder *builder,
-                                   Llvm_backend *be)
-{
+static llvm::Value *atomicCasMaker(llvm::SmallVectorImpl<llvm::Value *> &args,
+                                   BlockLIRBuilder *builder, Llvm_backend *be,
+                                   llvm::Type *elemTy) {
   assert(args.size() == 6);
   // GCC __atomic_compare_exchange_n takes a pointer to the old value.
   // We need to load it.
-  // TODO: FIX THIS!!!
-  llvm::Value *old = builder->CreateLoad(nullptr, args[1]);
+  llvm::Value *old = builder->CreateLoad(elemTy, args[1]);
   // FIXME: see atomicLoadMaker, but default to SequentiallyConsistent
   // for success order, Monotonic (i.e. relaxed) for failed order,
   // and false for weak.
@@ -565,6 +563,18 @@ static llvm::Value *atomicCasMaker(llvm::SmallVectorImpl<llvm::Value*> &args,
   // value, and cast to Go bool type (i8).
   llvm::Value *ret = builder->CreateExtractValue(cas, {1});
   return builder->CreateZExt(ret, be->llvmInt8Type());
+}
+
+static llvm::Value *atomicCasMaker4(llvm::SmallVectorImpl<llvm::Value *> &args,
+                                    BlockLIRBuilder *builder,
+                                    Llvm_backend *be) {
+  return atomicCasMaker(args, builder, be, be->llvmInt32Type());
+}
+
+static llvm::Value *atomicCasMaker8(llvm::SmallVectorImpl<llvm::Value *> &args,
+                                    BlockLIRBuilder *builder,
+                                    Llvm_backend *be) {
+  return atomicCasMaker(args, builder, be, be->llvmInt64Type());
 }
 
 void BuiltinTable::defineExprBuiltins()
@@ -656,13 +666,13 @@ void BuiltinTable::defineExprBuiltins()
   {
     BuiltinEntryTypeVec typeVec = {boolType, uint32PtrType, uint32PtrType, uint32Type,
                                    boolType, int32Type, int32Type};
-    registerExprBuiltin("__atomic_compare_exchange_4", nullptr,
-                        typeVec, atomicCasMaker);
+    registerExprBuiltin("__atomic_compare_exchange_4", nullptr, typeVec,
+                        atomicCasMaker4);
   }
   {
     BuiltinEntryTypeVec typeVec = {boolType, uint64PtrType, uint64PtrType, uint64Type,
                                    boolType, int32Type, int32Type};
-    registerExprBuiltin("__atomic_compare_exchange_8", nullptr,
-                        typeVec, atomicCasMaker);
+    registerExprBuiltin("__atomic_compare_exchange_8", nullptr, typeVec,
+                        atomicCasMaker8);
   }
 }
