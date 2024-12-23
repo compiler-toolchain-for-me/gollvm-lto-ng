@@ -167,8 +167,11 @@ void DIBuildHelper::insertVarDecl(Bvariable *var,
   } else if (var->flavor() == ParamVar) {
     // parameters passing by reference may have no initializers.
     // declare them at function entry.
-    dibuilder().insertDeclare(var->value(), dilv, expr, vloc,
-                              &entryBlock_->front());
+    if (!entryBlock_->empty())
+      dibuilder().insertDeclare(var->value(), dilv, expr, vloc,
+                                &entryBlock_->front());
+    else
+      dibuilder().insertDeclare(var->value(), dilv, expr, vloc, entryBlock_);
     return;
   } else {
     // locals with no initializer should only be zero-sized vars.
