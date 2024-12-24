@@ -383,16 +383,13 @@ unsigned Bfunction::genArgSpill(Bvariable *paramVar,
   llvm::Type *llst = paramInfo.computeABIStructType(tm);
   llvm::Type *ptst = llvm::PointerType::get(llst, 0);
 
-  // Cast the spill location to a pointer to the struct created above.
-  std::string tag(namegen("cast"));
-  llvm::Value *bitcast = builder.CreateBitCast(sploc, ptst, tag);
   llvm::Instruction *stinst = nullptr;
 
   // Generate a store to each field.
   for (unsigned i = 0; i < paramInfo.abiTypes().size(); ++i) {
     std::string tag(namegen("field" + std::to_string(i)));
     llvm::Value *fieldgep =
-        builder.CreateConstInBoundsGEP2_32(llst, bitcast, 0, i, tag);
+        builder.CreateConstInBoundsGEP2_32(llst, sploc, 0, i, tag);
     llvm::Value *argChunk = arguments_[paramInfo.sigOffset() + i];
     stinst = builder.CreateStore(argChunk, fieldgep);
   }
@@ -532,10 +529,8 @@ llvm::Value *Bfunction::genReturnSequence(Bexpression *toRet,
                       returnInfo.abiType());
   llvm::Type *ptst = llvm::PointerType::get(llrt, 0);
   BlockLIRBuilder builder(function(), inamegen);
-  std::string castname(namegen("cast"));
-  llvm::Value *bitcast = builder.CreateBitCast(toRet->value(), ptst, castname);
   std::string loadname(namegen("ld"));
-  llvm::Instruction *ldinst = builder.CreateLoad(llrt, bitcast, loadname);
+  llvm::Instruction *ldinst = builder.CreateLoad(llrt, toRet->value(), loadname);
   retInstrs->appendInstructions(builder.instructions());
   return ldinst;
 }

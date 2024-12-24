@@ -625,26 +625,6 @@ Llvm_backend::convertForBinary(Operator op,
   if (leftType == rightType)
     return rval;
 
-  // Case 1: nil op X
-  if (llvm::isa<llvm::ConstantPointerNull>(leftVal) &&
-      rightType->isPointerTy()) {
-    BexprLIRBuilder builder(context_, left);
-    std::string tag(namegen("cast"));
-    llvm::Value *bitcast = builder.CreateBitCast(leftVal, rightType, tag);
-    rval.first = bitcast;
-    return rval;
-  }
-
-  // Case 2: X op nil
-  if (llvm::isa<llvm::ConstantPointerNull>(rightVal) &&
-      leftType->isPointerTy()) {
-    BexprLIRBuilder builder(context_, right);
-    std::string tag(namegen("cast"));
-    llvm::Value *bitcast = builder.CreateBitCast(rightVal, leftType, tag);
-    rval.second = bitcast;
-    return rval;
-  }
-
   // Case 3: shift with different sized operands (ex: int64(v) << uint8(3)).
   // Promote or demote shift amount operand to match width of left operand.
   if ((op == OPERATOR_LSHIFT || op == OPERATOR_RSHIFT || op == OPERATOR_EQEQ) &&
@@ -659,24 +639,6 @@ Llvm_backend::convertForBinary(Operator op,
       conv = builder.CreateTrunc(rightVal, leftType, namegen("trunc"));
     rval.second = conv;
     return rval;
-  }
-
-  // Case 4: pointer type comparison
-  // We check that if both are pointer types and pointing to the same type,
-  // insert a cast (it doesn't matter we cast which one). This mostly needed
-  // for circular pointer types (ex: type T *T; var p, q T; p == &q), where
-  // the two sides have semantically identical types but with different
-  // representations (in this case, T vs. *T).
-  if (leftType->isPointerTy() && rightType->isPointerTy()) {
-    BPointerType *lbpt = left->btype()->castToBPointerType();
-    BPointerType *rbpt = right->btype()->castToBPointerType();
-    if (lbpt->toType()->type() == rbpt->toType()->type()) {
-      BexprLIRBuilder builder(context_, right);
-      std::string tag(namegen("cast"));
-      llvm::Value *bitcast = builder.CreateBitCast(rightVal, leftType, tag);
-      rval.second = bitcast;
-      return rval;
-    }
   }
 
   return rval;
@@ -1231,16 +1193,8 @@ Llvm_backend::genCallMarshallArgs(const std::vector<Bexpression *> &fn_args,
           Bvariable *cv = genVarForConstant(cval, resarg->btype());
           val = cv->value();
         }
-        std::string castname(namegen("cast"));
-        // We are going to do a load, so the address space does not matter.
-        // It seems we may get here with either address space, so we just
-        // do an address-space-preserving cast.
-        llvm::Type *ptv =
-            llvm::PointerType::get(paramInfo.abiType(),
-                                   val->getType()->getPointerAddressSpace());
-        llvm::Value *bitcast = builder.CreateBitCast(val, ptv, castname);
         std::string ltag(namegen("ld"));
-        llvm::Value *ld = builder.CreateLoad(paramInfo.abiType(), bitcast, ltag);
+        llvm::Value *ld = builder.CreateLoad(paramInfo.abiType(), val, ltag);
         state.llargs.push_back(ld);
         continue;
       }
@@ -1266,7 +1220,6 @@ Llvm_backend::genCallMarshallArgs(const std::vector<Bexpression *> &fn_args,
 
     // Create a struct type of the appropriate shape
     llvm::Type *llst = paramInfo.computeABIStructType(typeManager());
-    llvm::Type *ptst = makeLLVMPointerType(llst);
 
     // If the value we're passing is a composite constant, we have to
     // spill it to memory here in order for the casts below to work.
@@ -1282,16 +1235,11 @@ Llvm_backend::genCallMarshallArgs(const std::vector<Bexpression *> &fn_args,
       val = cv->value();
     }
 
-    // Cast the value to the struct type
-    std::string tag(namegen("cast"));
-    llvm::Value *bitcast =
-        builder.CreatePointerBitCastOrAddrSpaceCast(val, ptst, tag);
-
     // Load up each field
     for ( unsigned i = 0; i < paramInfo.abiTypes().size(); ++i) {
       std::string ftag(namegen("field"+std::to_string(i)));
       llvm::Value *fieldgep =
-          builder.CreateConstInBoundsGEP2_32(llst, bitcast, 0, i, ftag);
+          builder.CreateConstInBoundsGEP2_32(llst, val, 0, i, ftag);
       std::string ltag(namegen("ld"));
       llvm::Value *ld = builder.CreateLoad(paramInfo.abiTypes()[i], fieldgep, ltag);
       state.llargs.push_back(ld);
@@ -1372,13 +1320,8 @@ void Llvm_backend::genCallEpilog(GenCallState &state,
       llvm::Type *rt = (returnInfo.abiTypes().size() == 1 ?
                         returnInfo.abiType()  :
                         returnInfo.computeABIStructType(typeManager()));
-      llvm::Type *ptrt = llvm::PointerType::get(rt, 0);
-      std::string castname(namegen("cast"));
-      llvm::Value *bitcast =
-          state.builder.CreateBitCast(state.sretTemp,
-                                      ptrt, castname);
       std::string stname(namegen("st"));
-      state.builder.CreateStore(callInst, bitcast);
+      state.builder.CreateStore(callInst, state.sretTemp);
       callExpr->appendInstructions(state.builder.instructions());
     }
   }
