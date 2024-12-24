@@ -133,7 +133,10 @@ static Type *getPointerElementType(Value *V) {
   } else if (GetElementPtrInst *GEP = dyn_cast<GetElementPtrInst>(V)) {
     return GEP->getResultElementType();
   } else if (ConstantExpr *CE = dyn_cast<ConstantExpr>(V)) {
-    return getPointerElementType(CE->getAsInstruction());
+    auto *Inst = CE->getAsInstruction();
+    Type *ITy = getPointerElementType(CE->getAsInstruction());
+    Inst->deleteValue();
+    return ITy;
   } else if (GlobalValue *GV = dyn_cast<GlobalValue>(V)) {
     return GV->getValueType();
   } else {
