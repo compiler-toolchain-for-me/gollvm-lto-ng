@@ -397,6 +397,12 @@ bool CompileGoImpl::setup(const Action &jobAction)
       driver_.reconcileOptionPair(gollvm::options::OPT_fcg_profile,
                                   gollvm::options::OPT_fno_cg_profile, false);
 
+  go_no_warn = args_.hasArg(gollvm::options::OPT_w);
+  go_loc_show_column =
+      driver_.reconcileOptionPair(gollvm::options::OPT_fshow_column,
+                                  gollvm::options::OPT_fno_show_column,
+                                  true);
+
   // Capture optimization record.
   opt::Arg *optrecordarg =
       args_.getLastArg(gollvm::options::OPT_fsave_optimization_record,
