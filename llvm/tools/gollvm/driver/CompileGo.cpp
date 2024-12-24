@@ -137,6 +137,8 @@ class CompileGoImpl {
   std::string targetFeaturesAttr_;
   std::string sampleProfileFile_;
   bool enable_gc_;
+  bool is_lto_ = false;
+  bool is_thin_lto_ = false;
 
   std::optional<PGOOptions> setupPGO();
   void setupGoSearchPath();
@@ -402,6 +404,14 @@ bool CompileGoImpl::setup(const Action &jobAction)
       driver_.reconcileOptionPair(gollvm::options::OPT_fshow_column,
                                   gollvm::options::OPT_fno_show_column,
                                   true);
+
+  opt::Arg *ltoarg = args_.getLastArg(gollvm::options::OPT_flto_EQ);
+  if (ltoarg) {
+    is_lto_ = true;
+    pto_.UnifiedLTO = true;
+    StringRef ltotype = ltoarg->getValue();
+    is_thin_lto_ = (ltotype.lower() == "thin");
+  }
 
   // Capture optimization record.
   opt::Arg *optrecordarg =
@@ -1006,24 +1016,20 @@ bool CompileGoImpl::invokeBackEnd(const Action &jobAction)
   pb.crossRegisterProxies(lam, fam, gcam, mam);
 
   bool disablePasses =  args_.hasArg(gollvm::options::OPT_disable_llvm_passes);
-  ThinOrFullLTOPhase lto_phase = ThinOrFullLTOPhase::None;
 
   ModulePassManager modulePasses;
   if (!disablePasses) {
-    if (olvl_ == OptimizationLevel::O0) {
-
-      modulePasses = pb.buildO0DefaultPipeline(olvl_, lto_phase);
-    } else if (lto_phase == ThinOrFullLTOPhase::ThinLTOPreLink) {
-      modulePasses = pb.buildThinLTOPreLinkDefaultPipeline(olvl_);
-    } else if (lto_phase == ThinOrFullLTOPhase::FullLTOPreLink) {
-      modulePasses = pb.buildLTOPreLinkDefaultPipeline(olvl_);
+    if (is_lto_) {
+      // Always use unified LTO, so set ThinLTO = true.
+      modulePasses = pb.buildFatLTODefaultPipeline(olvl_, /* ThinLTO */ true,
+                                                   /* EmitSummary */ true);
+      module_->addModuleFlag(llvm::Module::Error, "UnifiedLTO", uint32_t(1));
     } else {
       modulePasses = pb.buildPerModuleDefaultPipeline(olvl_);
     }
   }
 
   bool needDwarfDiscr = !sampleProfileFile_.empty();
-
   opt::Arg *dbgprofarg =
       args_.getLastArg(gollvm::options::OPT_fdebug_info_for_profiling,
                        gollvm::options::OPT_fno_debug_info_for_profiling);

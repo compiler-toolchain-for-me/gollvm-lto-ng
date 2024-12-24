@@ -510,11 +510,15 @@ def pedantic_errors : Flag<["-"], "pedantic-errors">,
 def fdiagnostics_color_EQ : Joined<["-"], "fdiagnostics-color=">,
     Flags<[Ignored]>, HelpText<"This option is ignored">;
 
-// Currently unsupported or not-yet-supported.
+def flto_EQ : Joined<["-"], "flto=">,
+  Group<f_Group>,
+  HelpText<"Set LTO mode">, Values<"thin,full">;
 
 def flto : Flag<["-"], "flto">,
-    Flags<[Ignored]>, HelpText<"This option is not yet supported">;
+  Group<f_Group>,
+  Alias<flto_EQ>, AliasArgs<["full"]>, HelpText<"Enable LTO in 'full' mode">;
 
+// Currently unsupported or not-yet-supported.
 def fuse_linker_plugin : Flag<["-"], "fuse-linker-plugin">,
     Flags<[Ignored]>, HelpText<"This option is not yet supported">;
 

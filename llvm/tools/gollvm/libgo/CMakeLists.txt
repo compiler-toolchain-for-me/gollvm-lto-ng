@@ -90,6 +90,10 @@ if(NOT GOLLVM_USE_SPLIT_STACK)
   list(APPEND libgo_extra_gocflags "-fno-split-stack")
 endif()
 
+if (GOLLVM_LTO_SUPPORT)
+  list(APPEND libgo_extra_gocflags "-flto")
+endif()
+
 # Read in list of all libgo packages
 file(STRINGS "${libgo_srcroot}/libgo-packages.txt" libpackages)
 file(STRINGS "${libgo_srcroot}/gotool-packages.txt" toolpackages)
