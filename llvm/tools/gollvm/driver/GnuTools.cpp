@@ -374,6 +374,16 @@ bool Linker::constructCommand(Compilation &compilation,
   if (!toolchain().driver().sysRoot().empty())
     cmdArgs.push_back(args.MakeArgString(llvm::StringRef("--sysroot=") + toolchain().driver().sysRoot()));
 
+  llvm::opt::Arg *ltoarg = args.getLastArg(gollvm::options::OPT_flto_EQ);
+  if (ltoarg != nullptr) {
+    llvm::SmallString<256> plugin_path(compilation.driver().installDir());
+    llvm::sys::path::append(plugin_path, "..");
+    llvm::sys::path::append(plugin_path, "lib");
+    llvm::sys::path::append(plugin_path, "LLVMgold.so");
+    cmdArgs.push_back(
+        args.MakeArgString(llvm::StringRef("--plugin=") + plugin_path));
+  }
+
   bool useStdLib = !args.hasArg(gollvm::options::OPT_nostdlib);
 
   // Select proper options depending on presence of -static/-shared, etc.

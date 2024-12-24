@@ -50,6 +50,10 @@ set(matchdotsh "${libgo_scriptroot}/match.sh")
 
 set(cgo_extra_go_files "${cgozdefaultccdotgo}")
 
+if (GOLLVM_LTO_SUPPORT)
+  list(APPEND gotools_extra_gocflags "-flto" "-static-libgo")
+endif()
+
 # Loop over each of the tools of interest.
 set(tools "go" "gofmt" "cgo" "vet" "buildid" "test2json")
 set(allgotools)
@@ -98,6 +102,9 @@ foreach(tool ${tools})
 endforeach()
 
 add_custom_target(gotools_all DEPENDS ${allgotools})
+if (GOLLVM_LTO_SUPPORT)
+  add_dependencies(gotools_all LLVMgold)
+endif()
 add_dependencies(gollvm gotools_all)
 
 message(STATUS "gotools: generating check targets")
