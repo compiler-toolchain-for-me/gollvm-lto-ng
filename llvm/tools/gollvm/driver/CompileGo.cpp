@@ -138,9 +138,6 @@ class CompileGoImpl {
   std::string sampleProfileFile_;
   bool enable_gc_;
 
-#if 0
-  void createFunctionPasses(legacy::FunctionPassManager &FPM);
-#endif
   std::optional<PGOOptions> setupPGO();
   void setupGoSearchPath();
   void setCConv();
@@ -964,59 +961,6 @@ std::optional<PGOOptions> CompileGoImpl::setupPGO() {
   return pgoOpt;
 }
 
-#if 0
-void CompileGoImpl::createFunctionPasses(legacy::FunctionPassManager &FPM)
-{
-  if (args_.hasArg(gollvm::options::OPT_disable_llvm_passes))
-    return;
-
-  // FIXME: support LTO, ThinLTO, PGO
-
-  PassManagerBuilder pmb;
-
-  // Configure the inliner
-  if (args_.hasArg(gollvm::options::OPT_fno_inline) ||
-      olvl_ == OptimizationLevel::O0) {
-    // Nothing here at the moment. There is go:noinline, but no equivalent
-    // of go:alwaysinline.
-  } else {
-    bool disableInlineHotCallSite = false; // for autofdo, not yet supported
-    pmb.Inliner =
-        createFunctionInliningPass(olvl_.getSpeedupLevel(), 2,
-                                   disableInlineHotCallSite);
-  }
-
-  pmb.OptLevel = olvl_.getSpeedupLevel();
-  pmb.SizeLevel = olvl_.getSizeLevel();
-
-
-  bool needDwarfDiscr = false;
-  if (! sampleProfileFile_.empty()) {
-    pmb.PGOSampleUse = sampleProfileFile_;
-    needDwarfDiscr = true;
-  }
-  opt::Arg *dbgprofarg =
-      args_.getLastArg(gollvm::options::OPT_fdebug_info_for_profiling,
-                       gollvm::options::OPT_fno_debug_info_for_profiling);
-  if (dbgprofarg) {
-    if (dbgprofarg->getOption().matches(gollvm::options::OPT_fdebug_info_for_profiling))
-      needDwarfDiscr = true;
-    else
-      needDwarfDiscr = false;
-  }
-  if (needDwarfDiscr)
-    pmb.addExtension(llvm::PassManagerBuilder::EP_EarlyAsPossible,
-                           addAddDiscriminatorsPass);
-
-
-  FPM.add(new TargetLibraryInfoWrapperPass(*tlii_));
-  if (! args_.hasArg(gollvm::options::OPT_noverify))
-    FPM.add(createVerifierPass());
-
-  pmb.populateFunctionPassManager(FPM);
-}
-#endif
-
 bool CompileGoImpl::invokeBackEnd(const Action &jobAction)
 {
   LoopAnalysisManager lam;
@@ -1055,20 +999,7 @@ bool CompileGoImpl::invokeBackEnd(const Action &jobAction)
   pb.registerLoopAnalyses(lam);
   pb.crossRegisterProxies(lam, fam, gcam, mam);
 
-  // Set up function passes
-  // TODO: function pass should be put under new pass manager.
-#if 0
-  legacy::FunctionPassManager functionPasses(module_.get());
-  functionPasses.add(
-      createTargetTransformInfoWrapperPass(target_->getTargetIRAnalysis()));
-#endif
-
   bool disablePasses =  args_.hasArg(gollvm::options::OPT_disable_llvm_passes);
-#if 0
-  if (!disablePasses)
-    createFunctionPasses(functionPasses);
-#endif
-
   ThinOrFullLTOPhase lto_phase = ThinOrFullLTOPhase::None;
 
   ModulePassManager modulePasses;
@@ -1183,14 +1114,6 @@ bool CompileGoImpl::invokeBackEnd(const Action &jobAction)
   }
 
 run:
-#if 0
-  // Here we go... first function passes
-  functionPasses.doInitialization();
-  for (Function &F : *module_.get())
-    if (!F.isDeclaration())
-      functionPasses.run(F);
-  functionPasses.doFinalization();
-#endif
   // ... then module passes
   modulePasses.run(*module_.get(), mam);
 
