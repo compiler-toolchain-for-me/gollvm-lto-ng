@@ -592,6 +592,15 @@ Bexpression *Llvm_backend::genLoad(Bexpression *expr,
       loadResultType = tctyp;
     }
     int flavor = expr->flavor();
+    // In most cases loadResultType is the same as value llvm type,
+    // or they're both pointers. Still in some cases we need additional
+    // level of indirection. This happens when:
+    // 1. expr is used to access variable, structure field or is a compound
+    //    expression. Those expression's llvm value is alloca or GEP, which
+    //    is actually a pointer to a value, not value itself.
+    // 2. expr is dereference (N_Deref), which has not yet been fully handled
+    //    by the bridge. In such case the load instruction has not yet been
+    //    generated.
     if (!loadResultType->type()->isPointerTy())
       needs_extra_deref =
           ((flavor == N_Deref && expr->varExprPending()) || flavor == N_Var ||
