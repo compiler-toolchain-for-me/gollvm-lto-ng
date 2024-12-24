@@ -1077,21 +1077,6 @@ Bexpression *Llvm_backend::var_expression(Bvariable *var,
 
   // Normal case
   llvm::Value *varval = var->value();
-
-  // Special case for zero-sized globals. These require a type conversion,
-  // since the underlying definition has been coerced to something with
-  // non-zero size (as a means of avoiding linker misbehavior).
-  Btype *underlyingType = var->underlyingType();
-  if (underlyingType != nullptr) {
-    LIRBuilder irbuilder(context_, llvm::ConstantFolder());
-    std::string tag(namegen("zeroSizeCast"));
-    llvm::Type *toType = llvm::PointerType::get(var->btype()->type(),
-                                                addressSpace_);
-    llvm::Value *bitcast =
-        irbuilder.CreateBitCast(var->value(), toType, tag);
-    varval = bitcast;
-  }
-
   Bexpression *varexp = nbuilder_.mkVar(var, varval, location);
   varexp->setTag(var->name().c_str());
   return varexp;
@@ -1286,11 +1271,9 @@ Bexpression *Llvm_backend::string_constant_expression(const std::string &val)
                     MV_SkipDebug, llvm::GlobalValue::PrivateLinkage,
                     scon, 1);
   llvm::Constant *varval = llvm::cast<llvm::Constant>(svar->value());
-  llvm::Constant *bitcast =
-      llvm::ConstantExpr::getBitCast(varval, stringType()->type());
-  Bexpression *bconst = nbuilder_.mkConst(stringType(), bitcast);
+  Bexpression *bconst = nbuilder_.mkConst(stringType(), varval);
   Bexpression *rval =
-      makeGlobalExpression(bconst, bitcast, stringType(), Location());
+      makeGlobalExpression(bconst, varval, stringType(), Location());
   stringConstantMap_[scon] = rval;
   return rval;
 }
