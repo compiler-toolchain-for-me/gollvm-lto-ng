@@ -103,7 +103,7 @@ endforeach()
 
 add_custom_target(gotools_all DEPENDS ${allgotools})
 if (GOLLVM_LTO_SUPPORT)
-  add_dependencies(gotools_all LLVMgold)
+  add_dependencies(gotools_all LLVMgold llvm-ar llvm-ranlib)
 endif()
 add_dependencies(gollvm gotools_all)
 
