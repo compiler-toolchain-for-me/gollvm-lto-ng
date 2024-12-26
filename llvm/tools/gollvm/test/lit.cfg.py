@@ -39,6 +39,7 @@ llvm_config.use_default_substitutions()
 tool_patterns = ['llvm-goc', 'not', 'llvm-dis', 'llvm-readelf']
 
 llvm_config.add_tool_substitutions(tool_patterns)
+llvm_config.config.substitutions.extend([('%B', config.gollvm_obj_root)])
 
 # Running on ELF based *nix
 if platform.system() in ['FreeBSD', 'NetBSD', 'Linux']:
