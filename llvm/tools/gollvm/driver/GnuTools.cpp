@@ -382,6 +382,12 @@ bool Linker::constructCommand(Compilation &compilation,
     llvm::sys::path::append(plugin_path, "LLVMgold.so");
     cmdArgs.push_back(
         args.MakeArgString(llvm::StringRef("--plugin=") + plugin_path));
+    cmdArgs.push_back(
+        args.MakeArgString(llvm::StringRef("--plugin-opt=unifiedlto")));
+    llvm::StringRef ltotype = ltoarg->getValue();
+    if (ltotype.lower() == "thin")
+      cmdArgs.push_back(
+          args.MakeArgString(llvm::StringRef("--plugin-opt=thinlto")));
   }
 
   bool useStdLib = !args.hasArg(gollvm::options::OPT_nostdlib);
