@@ -164,5 +164,8 @@ add_subdirectory(staticpkg)
 # Subdir for unit tests
 add_subdirectory(unittests)
 
+# Subdir for lit tests
+add_subdirectory(test)
+
 # Top-level check target for gollvm
 add_custom_target(check-gollvm DEPENDS check-libgo check-gotools)
