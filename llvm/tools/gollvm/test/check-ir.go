@@ -1,4 +1,4 @@
-// RUN: llvm-goc -flto -c %s -o %t.o
+// RUN: llvm-goc -L%B/tools/gollvm/libgo -flto -c %s -o %t.o
 // RUN: llvm-objcopy --dump-section .llvm.lto=%t.lto.bc %t.o
 // RUN: llvm-dis %t.lto.bc -o - | FileCheck %s
 
