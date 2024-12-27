@@ -388,6 +388,13 @@ bool Linker::constructCommand(Compilation &compilation,
     if (ltotype.lower() == "thin")
       cmdArgs.push_back(
           args.MakeArgString(llvm::StringRef("--plugin-opt=thinlto")));
+
+    bool merge_fn = compilation.driver().reconcileOptionPair(
+        gollvm::options::OPT_fmerge_functions,
+        gollvm::options::OPT_fno_merge_functions, false);
+    if (merge_fn)
+      cmdArgs.push_back(
+          args.MakeArgString(llvm::StringRef("--plugin-opt=merge-functions")));
   }
 
   bool useStdLib = !args.hasArg(gollvm::options::OPT_nostdlib);
