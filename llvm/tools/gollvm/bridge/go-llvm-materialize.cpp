@@ -1406,13 +1406,6 @@ Bexpression *Llvm_backend::materializeCall(Bexpression *callExpr)
   std::vector<Bexpression *> cexprs =
       nbuilder_.extractChildenAndDestroy(callExpr);
   Bexpression *fn_expr = cexprs[0];
-  if (llvm::GlobalValue *gv =
-          llvm::dyn_cast_or_null<llvm::GlobalValue>(fn_expr->value())) {
-    if (gv->getName() == "runtime.fixalloc.alloc") {
-      int brk = 1;
-    }
-  }
-
   Bexpression *chain_expr = cexprs[1];
   std::vector<Bexpression *> fn_args;
   for (unsigned idx = 2; idx < cexprs.size(); ++idx) {
