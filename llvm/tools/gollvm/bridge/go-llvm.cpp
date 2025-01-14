@@ -2332,9 +2332,6 @@ Bvariable *Llvm_backend::temporary_variable(Bfunction *function,
   if (binit == errorExpression())
     return errorVariable_.get();
   std::string tname(namegen("tmpv"));
-  if (tname == "tmpv.70") {
-    int brk = 1;
-  }
   bool is_address_taken = ((flags & Backend::variable_address_is_taken) != 0);
   Bvariable *tvar = local_variable(function, tname, btype, nullptr,
                                    is_address_taken, location);
