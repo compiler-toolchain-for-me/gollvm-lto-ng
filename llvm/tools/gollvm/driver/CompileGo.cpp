@@ -579,6 +579,7 @@ bool CompileGoImpl::initBridge()
     return false;
   bridge_->setTraceLevel(*tl);
   bridge_->setNoInline(args_.hasArg(gollvm::options::OPT_fno_inline));
+  bridge_->setMinSize(olvl_ == OptimizationLevel::Oz);
   bridge_->setTargetCpuAttr(targetCpuAttr_);
   bridge_->setTargetFeaturesAttr(targetFeaturesAttr_);
 

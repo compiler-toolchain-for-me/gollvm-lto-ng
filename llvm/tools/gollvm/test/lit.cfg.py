@@ -36,7 +36,7 @@ config.test_exec_root = os.path.join(config.gollvm_obj_root, 'test')
 
 llvm_config.use_default_substitutions()
 
-tool_patterns = ['llvm-goc', 'not', 'llvm-dis', 'llvm-readelf']
+tool_patterns = ['llvm-goc', 'not', 'llvm-dis', 'llvm-readelf', 'llvm-objdump', 'llvm-mc']
 
 llvm_config.add_tool_substitutions(tool_patterns)
 llvm_config.config.substitutions.extend([('%B', config.gollvm_obj_root)])

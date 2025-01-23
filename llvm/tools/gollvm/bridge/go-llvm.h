@@ -399,6 +399,9 @@ public:
   // Enable/disable the use of split stacks.
   void setUseSplitStack(bool b) { useSplitStack_ = b; }
 
+  // Disable inlining if set to true.
+  void setMinSize(bool b) { minSize_ = b; }
+
   // Target CPU and features
   void setTargetCpuAttr(const std::string &cpu);
   void setTargetFeaturesAttr(const std::string &attrs);
@@ -749,6 +752,9 @@ public:
   // Whether we've started / finalized export data for the module.
   bool exportDataStarted_;
   bool exportDataFinalized_;
+
+  // Whether we should optimize for size
+  bool minSize_;
 
   // This counter gets incremented when the FE requests an error
   // object (error variable, error type, etc). We check to see whether
