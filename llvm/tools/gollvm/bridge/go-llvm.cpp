@@ -63,6 +63,7 @@ Llvm_backend::Llvm_backend(llvm::LLVMContext &context,
     , createDebugMetaData_(true)
     , exportDataStarted_(false)
     , exportDataFinalized_(false)
+    , minSize_(false)
     , errorCount_(0u)
     , compositeSizeThreshold_(8u) // TODO: adjust later to larger value
     , TLI_(nullptr)
@@ -2700,6 +2701,8 @@ Bfunction *Llvm_backend::function(Btype *fntype, const std::string &name,
     // attributes for target CPU and features
     fcn->addFnAttr("target-cpu", targetCpuAttr_);
     fcn->addFnAttr("target-features", targetFeaturesAttr_);
+    if (minSize_)
+      fcn->addFnAttr(llvm::Attribute::MinSize);
 
     // attribute for GC leaf function (i.e. not a statepoint)
     if (isGCLeaf(fns))

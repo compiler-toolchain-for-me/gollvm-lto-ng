@@ -10,7 +10,9 @@ list(APPEND GOLLVM_TEST_DEPS
   llvm-config
   llvm-readelf
   llvm-objcopy
+  llvm-objdump
   llvm-dis
+  llvm-mc
   FileCheck
   count
   not
