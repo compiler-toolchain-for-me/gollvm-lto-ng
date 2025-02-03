@@ -82,6 +82,17 @@ std::string Driver::installedLibDir()
   return std::string(ldir.str());
 }
 
+void Driver::addCompilerRTLibDirs(std::vector<std::string> &dirs) {
+  auto mkLibPath = [this](const std::vector<std::string> &dirs) {
+    llvm::SmallString<256> path(installDir_);
+    for (auto &d : dirs)
+      llvm::sys::path::append(path, d);
+    return std::string(path.str());
+  };
+  dirs.push_back(mkLibPath(
+      {"..", "lib", "clang", GOLLVM_LIBVERSION, "lib", triple().str()}));
+}
+
 // TODO: create a mechanism for capturing release tag/branch, and/or
 // git/svn revision for LLVM, gollvm, and so on.
 

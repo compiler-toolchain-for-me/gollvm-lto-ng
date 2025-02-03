@@ -426,6 +426,12 @@ bool Linker::constructCommand(Compilation &compilation,
   golib += toolchain().driver().installedLibDir();
   cmdArgs.push_back(args.MakeArgString(golib.c_str()));
 
+  // Add Compiler-RT directories to search paths
+  std::vector<std::string> crtDirs;
+  toolchain().driver().addCompilerRTLibDirs(crtDirs);
+  for (auto &crtDir : crtDirs)
+    cmdArgs.push_back(args.MakeArgString(std::string("-L") + crtDir));
+
   if (useStdLib) {
 
     // Incorporate linker arguments needed for Go.

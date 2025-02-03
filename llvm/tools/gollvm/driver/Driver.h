@@ -99,6 +99,10 @@ class Driver {
   // Installed lib dir (binary dir above plus ../lib64)
   std::string installedLibDir();
 
+  // add compiler-rt installation directories
+  // to the list of library search paths
+  void addCompilerRTLibDirs(std::vector<std::string> &dirs);
+
   // Prefix directories (supplied via -B args)
   const std::vector<std::string> &prefixes() const { return prefixes_; }
 
