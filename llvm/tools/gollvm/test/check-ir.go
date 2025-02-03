@@ -6,9 +6,11 @@
 // CHECK:      define void @__go_init_main(ptr nest nocapture readnone {{.*}}) {{.*}} {
 // CHECK-NEXT: entry:
 // CHECK-NEXT:   call void @runtime.registerTypeDescriptors(ptr nest undef, i64 11, ptr nonnull @go..typelists), !dbg
-// CHECK-NEXT:   call void @internal_1cpu..import(ptr nest undef), !dbg
-// CHECK-NEXT:   call void @runtime..import(ptr nest undef), !dbg
+// CHECK-NEXT:   call void @internal_1cpu..import(ptr nest undef) #[[ID:[0-9]+]], !dbg
+// CHECK-NEXT:   call void @runtime..import(ptr nest undef) #[[ID:[0-9]+]], !dbg
 
+// Calls from package initializer (except first one) shouldn't be inlined
+// CHECK: attributes #[[ID]] = { noinline }
 // Check that we have embedded summary index and module hash is not zero.
 // CHECK: module: (path: {{.*}}, hash: ({{[1-9][0-9]*}}, {{[1-9][0-9]*}}, {{[1-9][0-9]*}}, {{[1-9][0-9]*}}, {{[1-9][0-9]*}}))
 

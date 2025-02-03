@@ -1512,6 +1512,8 @@ Bexpression *Llvm_backend::materializeCall(Bexpression *callExpr)
     std::string callname(isvoid ? "" : namegen("call"));
     call = state.builder.CreateCall(llft, fnval,
                                     state.llargs, callname);
+    if (caller && caller->name() == go_get_gogo()->get_init_fn_name())
+      call->addFnAttr(llvm::Attribute::NoInline);
     genCallAttributes(state, call);
     callValue = (state.sretTemp ? state.sretTemp : call);
   }
