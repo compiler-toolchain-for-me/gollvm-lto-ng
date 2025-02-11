@@ -140,7 +140,7 @@ class CompileGoImpl {
   bool is_lto_ = false;
   bool is_thin_lto_ = false;
 
-  std::optional<PGOOptions> setupPGO();
+  std::optional<PGOOptions> setupPGO(bool &failed);
   void setupGoSearchPath();
   void setCConv();
 
@@ -353,8 +353,10 @@ bool CompileGoImpl::setup(const Action &jobAction)
   // Provide .cgoprofile section for lld to order functions.
   pto_.CallGraphProfile = driver_.reconcileOptionPair(gollvm::options::OPT_fcg_profile,
                                                       gollvm::options::OPT_fno_cg_profile, false);
-
-  pgo_ = setupPGO();
+  bool failed;
+  pgo_ = setupPGO(failed);
+  if (failed)
+    return false;
 
   // AutoFDO.
   opt::Arg *sprofarg =
@@ -888,8 +890,9 @@ isPGOUseContextSensitive(const std::string &profileInput) {
   return reader->hasCSIRLevelProfile();
 }
 
-std::optional<PGOOptions> CompileGoImpl::setupPGO() {
+std::optional<PGOOptions> CompileGoImpl::setupPGO(bool &failed) {
   std::optional<PGOOptions> pgoOpt;
+  failed = false;
 
   bool debugInfoForProfiling = driver_.reconcileOptionPair(
     gollvm::options::OPT_fdebug_info_for_profiling,
@@ -927,6 +930,8 @@ std::optional<PGOOptions> CompileGoImpl::setupPGO() {
           PGOOptions(profileInput, "", profileRemappingFile, "",
                      vfs::getRealFileSystem(), PGOOptions::IRUse, csAction,
                      PGOOptions::ColdFuncOpt::Default, debugInfoForProfiling);
+    } else {
+      failed = true;
     }
   } else if (auto p = driver_.reconcilePath(
       gollvm::options::OPT_fprofile_sample_use,
