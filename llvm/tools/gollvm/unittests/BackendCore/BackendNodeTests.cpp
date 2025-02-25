@@ -92,36 +92,36 @@ TEST_P(BackendNodeTests, VerifyVisitorBehavior) {
   EXPECT_EQ(res1, matsub);
 
   DECLARE_EXPECTED_OUTPUT(exp, R"RAW_RESULT(
-    node - pre 18
-    pre child + 18 15
-    node + pre 15
-    pre child const 15 1
+    node - pre 17
+    pre child + 17 14
+    node + pre 14
+    pre child const 14 1
     node const pre 1
     node const post 1
-    post child const 15 1
-    pre child deref 15 14
-    node deref pre 14
-    pre child var 14 8
+    post child const 14 1
+    pre child deref 14 13
+    node deref pre 13
+    pre child var 13 8
     node var pre 8
     node var post 8
-    post child var 14 8
-    node deref post 14
-    post child deref 15 14
-    node + post 15
-    post child + 18 15
-    pre child deref 18 17
-    node deref pre 17
+    post child var 13 8
+    node deref post 13
+    post child deref 14 13
+    node + post 14
+    post child + 17 14
     pre child deref 17 16
     node deref pre 16
-    pre child var 16 10
+    pre child deref 16 15
+    node deref pre 15
+    pre child var 15 10
     node var pre 10
     node var post 10
-    post child var 16 10
+    post child var 15 10
+    node deref post 15
+    post child deref 16 15
     node deref post 16
     post child deref 17 16
-    node deref post 17
-    post child deref 18 17
-    node - post 18
+    node - post 17
   )RAW_RESULT");
 
   std::string reason;
@@ -163,12 +163,12 @@ TEST_P(BackendNodeTests, CloneSubtree) {
   EXPECT_NE(add, matclone);
 
   DECLARE_EXPECTED_OUTPUT(exp, R"RAW_RESULT(
-    %x.ld.0 = load i32, i32* %x, align 4
-    %z.ld.0 = load i16, i16* %z, align 2
+    %x.ld.0 = load i32, ptr %x, align 4
+    %z.ld.0 = load i16, ptr %z, align 2
     %sext.0 = sext i16 %z.ld.0 to i32
     %add.0 = add i32 %x.ld.0, %sext.0
-    %y.ld.0 = load i32*, i32** %y, align 8
-    %.ld.0 = load i32, i32* %y.ld.0, align 4
+    %y.ld.0 = load ptr, ptr %y, align 8
+    %.ld.0 = load i32, ptr %y.ld.0, align 4
     %add.1 = add i32 %add.0, %.ld.0
   )RAW_RESULT");
 
@@ -205,14 +205,14 @@ TEST_P(BackendNodeTests, FixSharing) {
   Bexpression *matadd = be->materialize(add);
 
   DECLARE_EXPECTED_OUTPUT(exp2, R"RAW_RESULT(
-    %field.0 = getelementptr inbounds { { i32*, i32 }, { i32*, i32 } }, { { i32*, i32 }, { i32*, i32 } }* %x, i32 0, i32 0
-    %field.1 = getelementptr inbounds { i32*, i32 }, { i32*, i32 }* %field.0, i32 0, i32 0
-    %x.field.field.ld.0 = load i32*, i32** %field.1, align 8
-    %.ld.0 = load i32, i32* %x.field.field.ld.0, align 4
-    %field.2 = getelementptr inbounds { { i32*, i32 }, { i32*, i32 } }, { { i32*, i32 }, { i32*, i32 } }* %x, i32 0, i32 0
-    %field.3 = getelementptr inbounds { i32*, i32 }, { i32*, i32 }* %field.2, i32 0, i32 0
-    %.field.field.ld.0 = load i32*, i32** %field.3, align 8
-    %.ld.1 = load i32, i32* %.field.field.ld.0, align 4
+    %field.0 = getelementptr inbounds { { ptr, i32 }, { ptr, i32 } }, ptr %x, i32 0, i32 0
+    %field.1 = getelementptr inbounds { ptr, i32 }, ptr %field.0, i32 0, i32 0
+    %x.field.field.ld.0 = load ptr, ptr %field.1, align 8
+    %.ld.0 = load i32, ptr %x.field.field.ld.0, align 4
+    %field.2 = getelementptr inbounds { { ptr, i32 }, { ptr, i32 } }, ptr %x, i32 0, i32 0
+    %field.3 = getelementptr inbounds { ptr, i32 }, ptr %field.2, i32 0, i32 0
+    %.field.field.ld.0 = load ptr, ptr %field.3, align 8
+    %.ld.1 = load i32, ptr %.field.field.ld.0, align 4
     %add.0 = add i32 %.ld.0, %.ld.1
   )RAW_RESULT");
 

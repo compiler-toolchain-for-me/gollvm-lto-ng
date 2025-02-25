@@ -30,9 +30,9 @@ DECLARE_EXPECTED_OUTPUT(baseline, R"RAW_RESULT(
 // ending line (20). Which one will matter for the machinery that does
 // test remastering.
 static bool macroLineAtStart() {
-  if (baseline.line == 16) {
+  if (baseline.line == 17) {
     return true;
-  } else if (baseline.line == 20) {
+  } else if (baseline.line == 21) {
     return false;
   } else {
     assert(false && "macroLineAtStart broken -- source edited?");

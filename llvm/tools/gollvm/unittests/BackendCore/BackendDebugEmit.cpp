@@ -42,13 +42,13 @@ TEST_P(BackendDebugEmit, TestSimpleDecl) {
   h.mkLocal("x", bu32t);
 
   DECLARE_EXPECTED_OUTPUT(exp, R"RAW_RESULT(
-    define void @foo(i8* nest %nest.0) #0 {
-  entry:
-    %x = alloca i32, align 4
-    store i32 0, i32* %x, align 4
-    call void @llvm.dbg.declare(metadata i32* %x, metadata !4, metadata !DIExpression()), !dbg !12
-    ret void
-  }
+    define void @foo(ptr nest %nest.0) #0 {
+    entry:
+      %x = alloca i32, align 4
+      store i32 0, ptr %x, align 4
+        #dbg_declare(ptr %x, !4, !DIExpression(), !12)
+      ret void
+    }
   )RAW_RESULT");
 
   bool broken = h.finish(PreserveDebugInfo);
@@ -76,11 +76,11 @@ TEST(BackendDebugEmit, TestSimpleDecl2Amd64) {
   EXPECT_FALSE(broken && "Module failed to verify.");
 
   DECLARE_EXPECTED_OUTPUT(exp, R"RAW_RESULT(
-    define void @foo(i8* nest %nest.0, { i64, i64, i64 }* byval({ i64, i64, i64 }) %p0) #0 {
-  entry:
-    call void @llvm.dbg.declare(metadata { i64, i64, i64 }* %p0, metadata !4, metadata !DIExpression()), !dbg !18
-    ret void
-  }
+    define void @foo(ptr nest %nest.0, ptr byval({ i64, i64, i64 }) %p0) #0 {
+    entry:
+        #dbg_declare(ptr %p0, !4, !DIExpression(), !18)
+      ret void
+    }
   )RAW_RESULT");
 
   bool isOK = h.expectValue(func->function(), exp);
@@ -103,10 +103,9 @@ TEST(BackendDebugEmit, TestSimpleDecl2Arm64) {
   EXPECT_FALSE(broken && "Module failed to verify.");
 
   DECLARE_EXPECTED_OUTPUT(exp, R"RAW_RESULT(
-    define void @foo(i8* nest %nest.0, { i64, i64, i64 }* %p0) #0 {
+    define void @foo(ptr nest %nest.0, ptr %p0) #0 {
     entry:
-      call void @llvm.dbg.declare(metadata { i64, i64, i64 }* %p0, metadata !4,
-                                  metadata !DIExpression()), !dbg !18
+        #dbg_declare(ptr %p0, !4, !DIExpression(), !18)
       ret void
     }
   )RAW_RESULT");
@@ -188,7 +187,7 @@ TEST_P(BackendDebugEmit, MoreComplexVarDecls) {
   std::vector<std::string> tokens = tokenize(fdump);
   unsigned declcount = 0;
   for (auto t : tokens)
-    if (t == "@llvm.dbg.declare(metadata")
+    if (t == "#dbg_declare(ptr")
       declcount += 1;
 
   // seven formals and six locals => 13 var decls
@@ -210,11 +209,11 @@ TEST_P(BackendDebugEmit, TestDeadLocalVar) {
   h.mkLocal("x", bu32t);
 
   DECLARE_EXPECTED_OUTPUT(exp, R"RAW_RESULT(
-    define void @foo(i8* nest %nest.0) #0 !dbg !4 {
-  entry:
-    %x = alloca i32, align 4
-    ret void, !dbg !10
-  }
+    define void @foo(ptr nest %nest.0) #0 !dbg !4 {
+    entry:
+      %x = alloca i32, align 4
+      ret void, !dbg !10
+    }
   )RAW_RESULT");
 
   bool broken = h.finish(PreserveDebugInfo);

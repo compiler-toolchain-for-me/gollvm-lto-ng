@@ -47,9 +47,9 @@ TEST_P(BackendCallTests, TestSimpleCall) {
   h.mkReturn(be->var_expression(x, loc));
 
   DECLARE_EXPECTED_OUTPUT(exp, R"RAW_RESULT(
-    %call.0 = call addrspace(0) i64 @foo(i8* nest undef, i32 3, i32 6, i64* null)
-    store i64 %call.0, i64* %x, align 8
-    %x.ld.0 = load i64, i64* %x, align 8
+    %call.0 = call addrspace(0) i64 @foo(ptr nest undef, i32 3, i32 6, ptr null)
+    store i64 %call.0, ptr %x, align 8
+    %x.ld.0 = load i64, ptr %x, align 8
     ret i64 %x.ld.0
   )RAW_RESULT");
 
@@ -80,7 +80,7 @@ TEST_P(BackendCallTests, CallToVoid) {
   h.mkExprStmt(call);
 
   DECLARE_EXPECTED_OUTPUT(exp, R"RAW_RESULT(
-    call addrspace(0) void @bar(i8* nest undef)
+    call addrspace(0) void @bar(ptr nest undef)
   )RAW_RESULT");
 
   bool isOK = h.expectBlock(exp);
@@ -119,8 +119,7 @@ TEST_P(BackendCallTests, MultiReturnCall) {
 
   {
     DECLARE_EXPECTED_OUTPUT(exp, R"RAW_RESULT(
-      %cast.0 = bitcast { i8*, i32*, i64*, i64 }* %sret.formal.0 to i8*
-      call addrspace(0) void @llvm.memcpy.p0i8.p0i8.i64(i8* align 8 %cast.0, i8* align 8 bitcast ({ i8*, i32*, i64*, i64 }* @const.0 to i8*), i64 32, i1 false)
+      call addrspace(0) void @llvm.memcpy.p0.p0.i64(ptr align 8 %sret.formal.0, ptr align 8 @const.0, i64 32, i1 false)
       ret void
     )RAW_RESULT");
 
@@ -143,19 +142,17 @@ TEST_P(BackendCallTests, MultiReturnCall) {
 
   {
     DECLARE_EXPECTED_OUTPUT(exp, R"RAW_RESULT(
-    %p0.ld.0 = load i8*, i8** %p0.addr, align 8
-    %field.0 = getelementptr inbounds { i8*, i32*, i64*, i64 }, { i8*, i32*, i64*, i64 }* %tmp.0, i32 0, i32 0
-    store i8* %p0.ld.0, i8** %field.0, align 8
-    %field.1 = getelementptr inbounds { i8*, i32*, i64*, i64 }, { i8*, i32*, i64*, i64 }* %tmp.0, i32 0, i32 1
-    store i32* null, i32** %field.1, align 8
-    %field.2 = getelementptr inbounds { i8*, i32*, i64*, i64 }, { i8*, i32*, i64*, i64 }* %tmp.0, i32 0, i32 2
-    store i64* null, i64** %field.2, align 8
-    %field.3 = getelementptr inbounds { i8*, i32*, i64*, i64 }, { i8*, i32*, i64*, i64 }* %tmp.0, i32 0, i32 3
-    store i64 101, i64* %field.3, align 8
-    %cast.2 = bitcast { i8*, i32*, i64*, i64 }* %sret.formal.0 to i8*
-    %cast.3 = bitcast { i8*, i32*, i64*, i64 }* %tmp.0 to i8*
-    call addrspace(0) void @llvm.memcpy.p0i8.p0i8.i64(i8* align 8 %cast.2, i8* align 8 %cast.3, i64 32, i1 false)
-    ret void
+      %p0.ld.0 = load ptr, ptr %p0.addr, align 8
+      %field.0 = getelementptr inbounds { ptr, ptr, ptr, i64 }, ptr %tmp.0, i32 0, i32 0
+      store ptr %p0.ld.0, ptr %field.0, align 8
+      %field.1 = getelementptr inbounds { ptr, ptr, ptr, i64 }, ptr %tmp.0, i32 0, i32 1
+      store ptr null, ptr %field.1, align 8
+      %field.2 = getelementptr inbounds { ptr, ptr, ptr, i64 }, ptr %tmp.0, i32 0, i32 2
+      store ptr null, ptr %field.2, align 8
+      %field.3 = getelementptr inbounds { ptr, ptr, ptr, i64 }, ptr %tmp.0, i32 0, i32 3
+      store i64 101, ptr %field.3, align 8
+      call addrspace(0) void @llvm.memcpy.p0.p0.i64(ptr align 8 %sret.formal.0, ptr align 8 %tmp.0, i64 32, i1 false)
+      ret void
     )RAW_RESULT");
 
     bool isOK = h.expectStmt(s2, exp);
@@ -206,12 +203,12 @@ TEST_P(BackendCallTests, CallToNoReturnFunction) {
          FcnTestHarness::YesAppend);
 
   DECLARE_EXPECTED_OUTPUT(exp, R"RAW_RESULT(
-    define void @foo(i8* nest %nest.0) #0 {
+    define void @foo(ptr nest %nest.0) #0 {
     entry:
       br i1 true, label %then.0, label %else.0
 
     then.0:                                           ; preds = %entry
-      call void @noret(i8* nest undef)
+      call void @noret(ptr nest undef)
       unreachable
 
     fallthrough.0:                                    ; preds = %else.0
@@ -283,18 +280,18 @@ TEST(BackendCallTests, TestMakeGetgDynamicArm64) {
   h.mkReturn(be->var_expression(z, loc));
 
   DECLARE_EXPECTED_OUTPUT(exp, R"RAW_RESULT(
-    %asmcall.0 = call addrspace(0) i64* asm sideeffect "adrp x0, :tlsdesc:runtime.g\0Aldr  $0, [x0, :tlsdesc_lo12:runtime.g]\0Aadd  x0, x0, :tlsdesc_lo12:runtime.g\0A.tlsdesccall runtime.g\0Ablr  $0\0Amrs  $0, TPIDR_EL0\0Aldr  $0, [$0, x0]\0A", "=r,~{x0}"()
-    store i64* %asmcall.0, i64** %x, align 8
-    call addrspace(0) void @bar(i8* nest undef)
-    %asmcall.1 = call addrspace(0) i64* asm sideeffect "adrp x0, :tlsdesc:runtime.g\0Aldr  $0, [x0, :tlsdesc_lo12:runtime.g]\0Aadd  x0, x0, :tlsdesc_lo12:runtime.g\0A.tlsdesccall runtime.g\0Ablr  $0\0Amrs  $0, TPIDR_EL0\0Aldr  $0, [$0, x0]\0A", "=r,~{x0}"()
-    store i64* %asmcall.1, i64** %y, align 8
-    %x.ld.0 = load i64*, i64** %x, align 8
-    %.ld.0 = load i64, i64* %x.ld.0, align 8
-    %y.ld.0 = load i64*, i64** %y, align 8
-    %.ld.1 = load i64, i64* %y.ld.0, align 8
+    %asmcall.0 = call addrspace(0) ptr asm sideeffect "adrp x0, :tlsdesc:runtime.g\0Aldr  $0, [x0, :tlsdesc_lo12:runtime.g]\0Aadd  x0, x0, :tlsdesc_lo12:runtime.g\0A.tlsdesccall runtime.g\0Ablr  $0\0Amrs  $0, TPIDR_EL0\0Aldr  $0, [$0, x0]\0A", "=r,~{x0}"()
+    store ptr %asmcall.0, ptr %x, align 8
+    call addrspace(0) void @bar(ptr nest undef)
+    %asmcall.1 = call addrspace(0) ptr asm sideeffect "adrp x0, :tlsdesc:runtime.g\0Aldr  $0, [x0, :tlsdesc_lo12:runtime.g]\0Aadd  x0, x0, :tlsdesc_lo12:runtime.g\0A.tlsdesccall runtime.g\0Ablr  $0\0Amrs  $0, TPIDR_EL0\0Aldr  $0, [$0, x0]\0A", "=r,~{x0}"()
+    store ptr %asmcall.1, ptr %y, align 8
+    %x.ld.0 = load ptr, ptr %x, align 8
+    %.ld.0 = load i64, ptr %x.ld.0, align 8
+    %y.ld.0 = load ptr, ptr %y, align 8
+    %.ld.1 = load i64, ptr %y.ld.0, align 8
     %add.0 = add i64 %.ld.0, %.ld.1
-    store i64 %add.0, i64* %z, align 8
-    %z.ld.0 = load i64, i64* %z, align 8
+    store i64 %add.0, ptr %z, align 8
+    %z.ld.0 = load i64, ptr %z, align 8
     ret i64 %z.ld.0
   )RAW_RESULT");
 

@@ -66,7 +66,7 @@ TEST_P(BackendVarTests, MakeLocalVar) {
   ASSERT_TRUE(ve2 != nullptr);
   Bstatement *es = h.mkExprStmt(ve2);
   EXPECT_EQ(repr(ve2->value()), "%loc1 = alloca i64, align 8");
-  EXPECT_EQ(repr(es), "%loc1.ld.0 = load i64, i64* %loc1, align 8");
+  EXPECT_EQ(repr(es), "%loc1.ld.0 = load i64, ptr %loc1, align 8");
 
   // Make sure error detection is working
   Bvariable *loce = be->local_variable(func1, "", be->error_type(), nullptr,
@@ -159,7 +159,7 @@ TEST_P(BackendVarTests, MakeTemporaryVar) {
                                            false, loc, &inits);
   ASSERT_TRUE(tvar != nullptr);
   ASSERT_TRUE(inits != nullptr);
-  EXPECT_EQ(repr(inits), "store i64 64, i64* %tmpv.0, align 8");
+  EXPECT_EQ(repr(inits), "store i64 64, ptr %tmpv.0, align 8");
 
   h.addStmt(inits);
 
@@ -302,8 +302,7 @@ TEST_P(BackendVarTests, ImmutableStructSetInit) {
 
   {
     DECLARE_EXPECTED_OUTPUT(exp, R"RAW_RESULT(
-      @desc = internal constant { i64 } { i64 ptrtoint
-      (i64 (i8*, i32, i32, i64*)* @foo to i64) }
+      @desc = internal constant { i64 } { i64 ptrtoint (ptr @foo to i64) }
     )RAW_RESULT");
 
     bool isOK = h.expectValue(ims->value(), exp);
@@ -460,8 +459,7 @@ TEST_P(BackendVarTests, GlobalVarsWithSameName) {
   ASSERT_TRUE(gv != nullptr);
   EXPECT_TRUE(isa<GlobalVariable>(gv->value()));
   EXPECT_EQ(repr(gv->value()), "@x = global { i32 } zeroinitializer");
-  EXPECT_EQ(repr(gvdecl->value()),
-            "i32* getelementptr inbounds ({ i32 }, { i32 }* @x, i32 0, i32 0)");
+  EXPECT_EQ(repr(gvdecl->value()), "@x = global { i32 } zeroinitializer");
 
   // Create them in the other order: definition first,
   // then external declaration.
@@ -478,8 +476,7 @@ TEST_P(BackendVarTests, GlobalVarsWithSameName) {
   ASSERT_TRUE(gvdecl2 != nullptr);
   EXPECT_TRUE(isa<GlobalVariable>(gv2->value()));
   EXPECT_EQ(repr(gv2->value()), "@y = global { i32 } zeroinitializer");
-  EXPECT_EQ(repr(gvdecl2->value()),
-      "i32* getelementptr inbounds ({ i32 }, { i32 }* @y, i32 0, i32 0)");
+  EXPECT_EQ(repr(gvdecl2->value()), "@y = global { i32 } zeroinitializer");
 
   bool broken = h.finish(PreserveDebugInfo);
   EXPECT_FALSE(broken && "Module failed to verify.");
@@ -519,26 +516,21 @@ TEST_P(BackendVarTests, TestVarLifetimeInsertion) {
   EXPECT_FALSE(broken && "Module failed to verify.");
 
   DECLARE_EXPECTED_OUTPUT(exp, R"RAW_RESULT(
-    define void @foo(i8* nest %nest.0) #0 {
-  entry:
-    %x = alloca i32, align 4
-    %y = alloca { i32, i32 }, align 4
-    %0 = bitcast i32* %x to i8*
-    call void @llvm.lifetime.start.p0i8(i64 4, i8* %0)
-    %1 = bitcast { i32, i32 }* %y to i8*
-    call void @llvm.lifetime.start.p0i8(i64 8, i8* %1)
-    store i32 0, i32* %x, align 4
-    %cast.0 = bitcast { i32, i32 }* %y to i8*
-    call void @llvm.memcpy.p0i8.p0i8.i64(i8* align 4 %cast.0, i8* align 4 bitcast ({ i32, i32 }* @const.0 to i8*), i64 8, i1 false)
-    %field.0 = getelementptr inbounds { i32, i32 }, { i32, i32 }* %y, i32 0, i32 1
-    %y.field.ld.0 = load i32, i32* %field.0, align 4
-    store i32 %y.field.ld.0, i32* %x, align 4
-    %2 = bitcast i32* %x to i8*
-    call void @llvm.lifetime.end.p0i8(i64 4, i8* %2)
-    %3 = bitcast { i32, i32 }* %y to i8*
-    call void @llvm.lifetime.end.p0i8(i64 8, i8* %3)
-    ret void
-  }
+    define void @foo(ptr nest %nest.0) #0 {
+    entry:
+      %x = alloca i32, align 4
+      %y = alloca { i32, i32 }, align 4
+      call void @llvm.lifetime.start.p0(i64 4, ptr %x)
+      call void @llvm.lifetime.start.p0(i64 8, ptr %y)
+      store i32 0, ptr %x, align 4
+      call void @llvm.memcpy.p0.p0.i64(ptr align 4 %y, ptr align 4 @const.0, i64 8, i1 false)
+      %field.0 = getelementptr inbounds { i32, i32 }, ptr %y, i32 0, i32 1
+      %y.field.ld.0 = load i32, ptr %field.0, align 4
+      store i32 %y.field.ld.0, ptr %x, align 4
+      call void @llvm.lifetime.end.p0(i64 4, ptr %x)
+      call void @llvm.lifetime.end.p0(i64 8, ptr %y)
+      ret void
+    }
   )RAW_RESULT");
 
   bool isOK = h.expectValue(func->function(), exp);
@@ -659,12 +651,12 @@ TEST_P(BackendVarTests, ZeroSizedGlobals) {
   EXPECT_FALSE(broken && "Module failed to verify.");
 
   DECLARE_EXPECTED_OUTPUT(exp, R"RAW_RESULT(
-    define void @foo(i8* nest %nest.0) #0 {
-  entry:
-    %localemptys2f = alloca { {}, {} }, align 1
-    %localemptyintar = alloca [0 x i32], align 4
-    ret void
-  }
+    define void @foo(ptr nest %nest.0) #0 {
+    entry:
+      %localemptys2f = alloca { {}, {} }, align 1
+      %localemptyintar = alloca [0 x i32], align 4
+      ret void
+    }
   )RAW_RESULT");
   bool isOK = h.expectValue(func->function(), exp);
   EXPECT_TRUE(isOK && "Value does not have expected contents");
@@ -711,7 +703,7 @@ TEST_P(BackendVarTests, MakeLocalWithDeclVar) {
 
   // Expect to see only one lifetime start, since A) loc1 is at the top
   // level, and B) loc2 uses loc1 as declVar.
-  const char *expected = "call void @llvm.lifetime.start.p0i8(i64";
+  const char *expected = "call void @llvm.lifetime.start.p0(i64";
   EXPECT_EQ(h.countInstancesInModuleDump(expected), 1u);
 }
 

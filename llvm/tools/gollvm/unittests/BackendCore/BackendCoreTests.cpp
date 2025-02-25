@@ -86,7 +86,7 @@ TEST_P(BackendCoreTests, StructTypes) {
   ASSERT_TRUE(best != nullptr);
   ASSERT_TRUE(llst != nullptr);
   EXPECT_EQ(llst, best->type());
-  EXPECT_EQ(repr(best->type()), "{ i8, float*, i64 }");
+  EXPECT_EQ(repr(best->type()), "{ i8, ptr, i64 }");
 
   // If a field has error type, entire struct has error type
   std::vector<Backend::Btyped_identifier> fields = {
@@ -186,14 +186,14 @@ TEST_P(BackendCoreTests, PlaceholderTypes) {
   Btype *phpt2 = be->placeholder_pointer_type("ph", loc, false);
   Btype *phpt3 = be->placeholder_pointer_type("ph", loc, false);
   ASSERT_TRUE(phpt2 != phpt3);
-  EXPECT_TRUE(phpt2->type() != phpt3->type());
+  // ptr == ptr
+  EXPECT_TRUE(phpt2->type() == phpt3->type());
 
   // Replace placeholder pointer type
   Btype *pst = be->pointer_type(mkBackendThreeFieldStruct(be.get()));
   be->set_placeholder_pointer_type(phpt1, pst);
   ASSERT_TRUE(phpt1->type()->isPointerTy());
   PointerType *llpt = cast<PointerType>(phpt1->type());
-  EXPECT_TRUE(llpt->getElementType()->isStructTy());
 
   // Placeholder struct type
   Btype *phst1 = be->placeholder_struct_type("ph", loc);
@@ -398,8 +398,6 @@ TEST_P(BackendCoreTests, TestFcnPointerCompatible) {
   // However the underlying LLVM types should be considered
   // assignment-compatible.
   std::set<llvm::Type *> visited;
-  bool equiv = tm->fcnPointerCompatible(pht->type(), pht2->type(), visited);
-  EXPECT_TRUE(equiv);
 
   bool broken = h.finish(PreserveDebugInfo);
   EXPECT_FALSE(broken && "Module failed to verify.");
@@ -468,9 +466,9 @@ TEST_P(BackendCoreTests, TestCompositeInitGvarConvert) {
   EXPECT_FALSE(broken && "Module failed to verify.");
 
   bool ok = h.expectModuleDumpContains(
-      "@gv = global { { i8, i8*, i32 }, %ph.0 } { { i8, i8*, i32 } { i8 0, "
-      "i8* "
-      "null, i32 101 }, %ph.0 { i8 0, i8* null, i32 101 } }");
+      "@gv = global { { i8, ptr, i32 }, %ph.0 } { { i8, ptr, i32 } { i8 0, "
+      "ptr "
+      "null, i32 101 }, %ph.0 { i8 0, ptr null, i32 101 } }");
   EXPECT_TRUE(ok);
 }
 

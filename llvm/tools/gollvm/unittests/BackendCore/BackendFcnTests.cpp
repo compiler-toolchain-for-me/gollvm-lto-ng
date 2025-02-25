@@ -298,8 +298,8 @@ TEST_P(BackendFcnTests, TestIntrinsicCall) {
   h.mkExprStmt(call);
 
   DECLARE_EXPECTED_OUTPUT(exp, R"RAW_RESULT(
-    store i64 0, i64* %x, align 8
-    %x.ld.0 = load i64, i64* %x, align 8
+    store i64 0, ptr %x, align 8
+    %x.ld.0 = load i64, ptr %x, align 8
     %call.0 = call addrspace(0) i64 @llvm.cttz.i64(i64 %x.ld.0, i1 true)
   )RAW_RESULT");
 
@@ -364,17 +364,11 @@ TEST_P(BackendFcnTests, TestCallMemBuiltins) {
   }
 
   DECLARE_EXPECTED_OUTPUT(exp, R"RAW_RESULT(
-    store i64 0, i64* %x, align 8
-    store i64 10101, i64* %y, align 8
-    %cast.0 = bitcast i64* %x to i8*
-    %cast.1 = bitcast i64* %y to i8*
-    %call.0 = call addrspace(0) i32 @memcmp(i8* %cast.0, i8* %cast.1, i64 8)
-    %cast.2 = bitcast i64* %x to i8*
-    %cast.3 = bitcast i64* %y to i8*
-    call addrspace(0) void @llvm.memmove.p0i8.p0i8.i64(i8* %cast.2, i8* %cast.3, i64 8, i1 false)
-    %cast.4 = bitcast i64* %y to i8*
-    %cast.5 = bitcast i64* %x to i8*
-    call addrspace(0) void @llvm.memcpy.p0i8.p0i8.i64(i8* %cast.4, i8* %cast.5, i64 8, i1 false)
+    store i64 0, ptr %x, align 8
+    store i64 10101, ptr %y, align 8
+    %call.0 = call addrspace(0) i32 @memcmp(ptr %x, ptr %y, i64 8)
+    call addrspace(0) void @llvm.memmove.p0.p0.i64(ptr %x, ptr %y, i64 8, i1 false)
+    call addrspace(0) void @llvm.memcpy.p0.p0.i64(ptr %y, ptr %x, i64 8, i1 false)
   )RAW_RESULT");
 
   bool isOK = h.expectBlock(exp);
@@ -425,10 +419,10 @@ TEST_P(BackendFcnTests, TestMultipleExternalFcnsWithSameName) {
   h.mkLocal("y", bi32t, call32);
 
   DECLARE_EXPECTED_OUTPUT(exp, R"RAW_RESULT(
-    %call.0 = call addrspace(0) i64 @syscall(i8* nest undef, i64 64)
-    store i64 %call.0, i64* %x, align 8
-    %call.1 = call addrspace(0) i32 bitcast (i64 (i8*, i64)* @syscall to i32 (i8*, i32)*)(i8* nest undef, i32 32)
-    store i32 %call.1, i32* %y, align 4
+    %call.0 = call addrspace(0) i64 @syscall(ptr nest undef, i64 64)
+    store i64 %call.0, ptr %x, align 8
+    %call.1 = call addrspace(0) i32 @syscall(ptr nest undef, i32 32)
+    store i32 %call.1, ptr %y, align 4
   )RAW_RESULT");
 
   bool isOK = h.expectBlock(exp);
@@ -498,14 +492,14 @@ TEST_P(BackendFcnTests, TestDeclAndDefWithSameName) {
   h.mkLocal("y", bps1t, call4);
 
   DECLARE_EXPECTED_OUTPUT(exp, R"RAW_RESULT(
-    %call.0 = call addrspace(0) i32 @bar(i8* nest undef)
-    store i32 %call.0, i32* %a, align 4
-    %call.1 = call addrspace(0) i32 @bar(i8* nest undef)
-    store i32 %call.1, i32* %b, align 4
-    %call.2 = call addrspace(0) {}* bitcast ({ i32 }* (i8*)* @baz to {}* (i8*)*)(i8* nest undef)
-    store {}* %call.2, {}** %x, align 8
-    %call.3 = call addrspace(0) { i32 }* @baz(i8* nest undef)
-    store { i32 }* %call.3, { i32 }** %y, align 8
+    %call.0 = call addrspace(0) i32 @bar(ptr nest undef)
+    store i32 %call.0, ptr %a, align 4
+    %call.1 = call addrspace(0) i32 @bar(ptr nest undef)
+    store i32 %call.1, ptr %b, align 4
+    %call.2 = call addrspace(0) ptr @baz(ptr nest undef)
+    store ptr %call.2, ptr %x, align 8
+    %call.3 = call addrspace(0) ptr @baz(ptr nest undef)
+    store ptr %call.3, ptr %y, align 8
   )RAW_RESULT");
 
   bool isOK = h.expectBlock(exp);

@@ -55,7 +55,7 @@ TEST_P(BackendCABIOracleTests, Basic) {
     CABIOracle cab(befty1, be->typeManager());
     DECLARE_EXPECTED_OUTPUT(exp, R"RAW_RESULT(
       Return: Direct { { double, double } } sigOffset: -1
-      Param 1: Direct AttrNest { i8* } sigOffset: 0
+      Param 1: Direct AttrNest { ptr } sigOffset: 0
       Param 2: Direct AttrSext { i8 } sigOffset: 1
       Param 3: Direct { float } sigOffset: 2
       Param 4: Ignore { void } sigOffset: -1
@@ -65,7 +65,7 @@ TEST_P(BackendCABIOracleTests, Basic) {
     bool equal = difftokens(exp.content, cab.toString(), reason);
     EXPECT_EQ("pass", equal ? "pass" : reason);
     EXPECT_EQ(repr(cab.getFunctionTypeForABI()),
-              "{ double, double } (i8*, i8, float, i64)");
+              "{ double, double } (ptr, i8, float, i64)");
   }
 }
 
@@ -118,99 +118,98 @@ TEST(BackendCABIOracleTests, ExtendedAmd64) {
   std::vector<FcnItem> items = {
 
       // 1
-      FcnItem( { }, { },
+      FcnItem({}, {},
               "Return: Ignore { void } sigOffset: -1 "
-              "Param 1: Direct AttrNest { i8* } sigOffset: 0",
-              "void (i8*)"),
+              "Param 1: Direct AttrNest { ptr } sigOffset: 0",
+              "void (ptr)"),
 
       // 2
-      FcnItem( { bi8t }, { },
+      FcnItem({bi8t}, {},
               "Return: Direct AttrSext { i8 } sigOffset: -1 "
-              "Param 1: Direct AttrNest { i8* } sigOffset: 0",
-              "i8 (i8*)"),
+              "Param 1: Direct AttrNest { ptr } sigOffset: 0",
+              "i8 (ptr)"),
 
       // 3
-      FcnItem( { }, { bi8t },
+      FcnItem({}, {bi8t},
               "Return: Ignore { void } sigOffset: -1 "
-              "Param 1: Direct AttrNest { i8* } sigOffset: 0 "
+              "Param 1: Direct AttrNest { ptr } sigOffset: 0 "
               "Param 2: Direct AttrSext { i8 } sigOffset: 1",
-              "void (i8*, i8)"),
+              "void (ptr, i8)"),
 
       // 4
-      FcnItem( { }, { st5, bpf64t },
+      FcnItem({}, {st5, bpf64t},
               "Return: Ignore { void } sigOffset: -1 "
-              "Param 1: Direct AttrNest { i8* } sigOffset: 0 "
+              "Param 1: Direct AttrNest { ptr } sigOffset: 0 "
               "Param 2: Direct { float } sigOffset: 1 "
-              "Param 3: Direct { double* } sigOffset: 2",
-              "void (i8*, float, double*)"),
+              "Param 3: Direct { ptr } sigOffset: 2",
+              "void (ptr, float, ptr)"),
 
       // 5
-      FcnItem({ bi8t, bf64t }, { bi8t, bu8t, st0 },
+      FcnItem({bi8t, bf64t}, {bi8t, bu8t, st0},
               "Return: Direct { { i8, double } } sigOffset: -1 "
-              "Param 1: Direct AttrNest { i8* } sigOffset: 0 "
+              "Param 1: Direct AttrNest { ptr } sigOffset: 0 "
               "Param 2: Direct AttrSext { i8 } sigOffset: 1 "
               "Param 3: Direct AttrZext { i8 } sigOffset: 2 "
               "Param 4: Ignore { void } sigOffset: -1",
-              "{ i8, double } (i8*, i8, i8)"),
+              "{ i8, double } (ptr, i8, i8)"),
 
       // 6
-      FcnItem({ st2 }, { st2, st0, st4, st1 },
+      FcnItem({st2}, {st2, st0, st4, st1},
               "Return: Direct { { double, double } } sigOffset: -1 "
-              "Param 1: Direct AttrNest { i8* } sigOffset: 0 "
+              "Param 1: Direct AttrNest { ptr } sigOffset: 0 "
               "Param 2: Direct { double, double } sigOffset: 1 "
               "Param 3: Ignore { void } sigOffset: -1 "
               "Param 4: Direct { <2 x float> } sigOffset: 3 "
               "Param 5: Direct { i64 } sigOffset: 4 ",
-              "{ double, double } (i8*, double, double, <2 x float>, i64)"),
+              "{ double, double } (ptr, double, double, <2 x float>, i64)"),
 
       // 7
-      FcnItem({ st3 }, { st3, st0, bu8t },
-              "Return: Indirect AttrStructReturn { { { double, double }, i8 }* } sigOffset: 0 "
-              "Param 1: Direct AttrNest { i8* } sigOffset: 1 "
-              "Param 2: Indirect AttrByVal { { { double, double }, i8 }* } sigOffset: 2 "
+      FcnItem({st3}, {st3, st0, bu8t},
+              "Return: Indirect AttrStructReturn { ptr } sigOffset: 0 "
+              "Param 1: Direct AttrNest { ptr } sigOffset: 1 "
+              "Param 2: Indirect AttrByVal { ptr } sigOffset: 2 "
               "Param 3: Ignore { void } sigOffset: -1 "
               "Param 4: Direct AttrZext { i8 } sigOffset: 3 ",
-              "void ({ { double, double }, i8 }*, i8*, "
-              "{ { double, double }, i8 }*, i8)"),
+              "void (ptr, ptr, ptr, i8)"),
 
       // 8
-      FcnItem( { st6 }, { st6, st6 },
+      FcnItem({st6}, {st6, st6},
               "Return: Direct { { i64, i64 } } sigOffset: -1 "
-              "Param 1: Direct AttrNest { i8* } sigOffset: 0 "
+              "Param 1: Direct AttrNest { ptr } sigOffset: 0 "
               "Param 2: Direct { i64, i64 } sigOffset: 1 "
               "Param 3: Direct { i64, i64 } sigOffset: 3",
-              "{ i64, i64 } (i8*, i64, i64, i64, i64)"),
+              "{ i64, i64 } (ptr, i64, i64, i64, i64)"),
 
       // 9
-      FcnItem( { st8 }, { st8 },
+      FcnItem({st8}, {st8},
               "Return: Direct { { i64, i32 } } sigOffset: -1 "
-              "Param 1: Direct AttrNest { i8* } sigOffset: 0 "
+              "Param 1: Direct AttrNest { ptr } sigOffset: 0 "
               "Param 2: Direct { i64, i32 } sigOffset: 1",
-              "{ i64, i32 } (i8*, i64, i32)"),
+              "{ i64, i32 } (ptr, i64, i32)"),
 
       // 10
-      FcnItem( { at0 }, { at1 },
+      FcnItem({at0}, {at1},
               "Return: Ignore { void } sigOffset: -1 "
-              "Param 1: Direct AttrNest { i8* } sigOffset: 0 "
+              "Param 1: Direct AttrNest { ptr } sigOffset: 0 "
               "Param 2: Direct { i32 } sigOffset: 1",
-              "void (i8*, i32)"),
+              "void (ptr, i32)"),
 
       // 11
-      FcnItem( { at2 }, { at3 },
+      FcnItem({at2}, {at3},
               "Return: Direct { { i64, i32 } } sigOffset: -1 "
-              "Param 1: Direct AttrNest { i8* } sigOffset: 0 "
+              "Param 1: Direct AttrNest { ptr } sigOffset: 0 "
               "Param 2: Direct { i64, i64 } sigOffset: 1",
-              "{ i64, i32 } (i8*, i64, i64)"),
+              "{ i64, i32 } (ptr, i64, i64)"),
 
       // 12
       // Make sure pointerness is preserved.
-      FcnItem( { stip }, { stii, stpp, stpi },
-              "Return: Direct { { i64, i8* } } sigOffset: -1 "
-              "Param 1: Direct AttrNest { i8* } sigOffset: 0 "
+      FcnItem({stip}, {stii, stpp, stpi},
+              "Return: Direct { { i64, ptr } } sigOffset: -1 "
+              "Param 1: Direct AttrNest { ptr } sigOffset: 0 "
               "Param 2: Direct { i64, i64 } sigOffset: 1 "
-              "Param 3: Direct { i8*, i8* } sigOffset: 3 "
-              "Param 4: Direct { i8*, i64 } sigOffset: 5",
-              "{ i64, i8* } (i8*, i64, i64, i8*, i8*, i8*, i64)"),
+              "Param 3: Direct { ptr, ptr } sigOffset: 3 "
+              "Param 4: Direct { ptr, i64 } sigOffset: 5",
+              "{ i64, ptr } (ptr, i64, i64, ptr, ptr, ptr, i64)"),
   };
 
   unsigned count = 1;
@@ -303,99 +302,97 @@ TEST(BackendCABIOracleTests, ExtendedArm64) {
       // 1
       FcnItem({}, {},
               "Return: Ignore { void } sigOffset: -1 "
-              "Param 1: Direct AttrNest { i8* } sigOffset: 0",
-              "void (i8*)"),
+              "Param 1: Direct AttrNest { ptr } sigOffset: 0",
+              "void (ptr)"),
 
       // 2
       FcnItem({bi8t}, {},
               "Return: Direct AttrSext { i8 } sigOffset: -1 "
-              "Param 1: Direct AttrNest { i8* } sigOffset: 0",
-              "i8 (i8*)"),
+              "Param 1: Direct AttrNest { ptr } sigOffset: 0",
+              "i8 (ptr)"),
 
       // 3
       FcnItem({}, {bi8t},
               "Return: Ignore { void } sigOffset: -1 "
-              "Param 1: Direct AttrNest { i8* } sigOffset: 0 "
+              "Param 1: Direct AttrNest { ptr } sigOffset: 0 "
               "Param 2: Direct AttrSext { i8 } sigOffset: 1",
-              "void (i8*, i8)"),
+              "void (ptr, i8)"),
 
       // 4
       FcnItem({}, {st5, bpf64t},
               "Return: Ignore { void } sigOffset: -1 "
-              "Param 1: Direct AttrNest { i8* } sigOffset: 0 "
+              "Param 1: Direct AttrNest { ptr } sigOffset: 0 "
               "Param 2: Direct { float } sigOffset: 1 "
-              "Param 3: Direct { double* } sigOffset: 2",
-              "void (i8*, float, double*)"),
+              "Param 3: Direct { ptr } sigOffset: 2",
+              "void (ptr, float, ptr)"),
 
       // 5
       FcnItem({bi8t, bf64t}, {bi8t, bu8t, st0},
               "Return: Direct { { i64, i64 } } sigOffset: -1 "
-              "Param 1: Direct AttrNest { i8* } sigOffset: 0 "
+              "Param 1: Direct AttrNest { ptr } sigOffset: 0 "
               "Param 2: Direct AttrSext { i8 } sigOffset: 1 "
               "Param 3: Direct AttrZext { i8 } sigOffset: 2 "
               "Param 4: Ignore { void } sigOffset: -1",
-              "{ i64, i64 } (i8*, i8, i8)"),
+              "{ i64, i64 } (ptr, i8, i8)"),
 
       // 6
       FcnItem({st2}, {st2, st0, st4, st1},
               "Return: Direct { { double, double } } sigOffset: -1 "
-              "Param 1: Direct AttrNest { i8* } sigOffset: 0 "
+              "Param 1: Direct AttrNest { ptr } sigOffset: 0 "
               "Param 2: Direct { [2 x double] } sigOffset: 1 "
               "Param 3: Ignore { void } sigOffset: -1 "
               "Param 4: Direct { [2 x float] } sigOffset: 2 "
               "Param 5: Direct { i64 } sigOffset:  3",
-              "{ double, double } (i8*, [2 x double], [2 x float], i64)"),
+              "{ double, double } (ptr, [2 x double], [2 x float], i64)"),
 
       // 7
       FcnItem({st3}, {st3, st0, bu8t},
-              "Return: Indirect AttrStructReturn { { { double, double }, i8 "
-              "}* } sigOffset: 0 "
-              "Param 1: Direct AttrNest { i8* } sigOffset: 1 "
-              "Param 2: Indirect AttrDoCopy { { { double, double }, i8 }* } "
+              "Return: Indirect AttrStructReturn { ptr } sigOffset: 0 "
+              "Param 1: Direct AttrNest { ptr } sigOffset: 1 "
+              "Param 2: Indirect AttrDoCopy { ptr } "
               "sigOffset: 2 "
               "Param 3: Ignore { void } sigOffset: -1 "
               "Param 4: Direct AttrZext { i8 } sigOffset: 3 ",
-              "void ({ { double, double }, i8 }*, i8*, "
-              "{ { double, double }, i8 }*, i8)"),
+              "void (ptr, ptr, ptr, i8)"),
 
       // 8
       FcnItem({st6}, {st6, st6},
               "Return: Direct { { i64, i64 } } sigOffset: -1 "
-              "Param 1: Direct AttrNest { i8* } sigOffset: 0 "
+              "Param 1: Direct AttrNest { ptr } sigOffset: 0 "
               "Param 2: Direct { i64, i64 } sigOffset: 1 "
               "Param 3: Direct { i64, i64 } sigOffset: 3",
-              "{ i64, i64 } (i8*, i64, i64, i64, i64)"),
+              "{ i64, i64 } (ptr, i64, i64, i64, i64)"),
 
       // 9
       FcnItem({st8}, {st8},
               "Return: Direct { { i64, i32 } } sigOffset: -1 "
-              "Param 1: Direct AttrNest { i8* } sigOffset: 0 "
+              "Param 1: Direct AttrNest { ptr } sigOffset: 0 "
               "Param 2: Direct { i64, i32 } sigOffset: 1",
-              "{ i64, i32 } (i8*, i64, i32)"),
+              "{ i64, i32 } (ptr, i64, i32)"),
 
       // 10
       FcnItem({at0}, {at1},
               "Return: Ignore { void } sigOffset: -1 "
-              "Param 1: Direct AttrNest { i8* } sigOffset: 0 "
+              "Param 1: Direct AttrNest { ptr } sigOffset: 0 "
               "Param 2: Direct { i32 } sigOffset: 1",
-              "void (i8*, i32)"),
+              "void (ptr, i32)"),
 
       // 11
       FcnItem({at2}, {at3},
               "Return: Direct { { i64, i32 } } sigOffset: -1 "
-              "Param 1: Direct AttrNest { i8* } sigOffset: 0 "
+              "Param 1: Direct AttrNest { ptr } sigOffset: 0 "
               "Param 2: Direct { i64, i64 } sigOffset: 1",
-              "{ i64, i32 } (i8*, i64, i64)"),
+              "{ i64, i32 } (ptr, i64, i64)"),
 
       // 12
       // Make sure pointerness is preserved.
       FcnItem({stip}, {stii, stpp, stpi},
-              "Return: Direct { { i64, i8* } } sigOffset: -1 "
-              "Param 1: Direct AttrNest { i8* } sigOffset: 0 "
+              "Return: Direct { { i64, ptr } } sigOffset: -1 "
+              "Param 1: Direct AttrNest { ptr } sigOffset: 0 "
               "Param 2: Direct { i64, i64 } sigOffset: 1 "
-              "Param 3: Direct { i8*, i8* } sigOffset: 3 "
-              "Param 4: Direct { i8*, i64 } sigOffset: 5",
-              "{ i64, i8* } (i8*, i64, i64, i8*, i8*, i8*, i64)"),
+              "Param 3: Direct { ptr, ptr } sigOffset: 3 "
+              "Param 4: Direct { ptr, i64 } sigOffset: 5",
+              "{ i64, ptr } (ptr, i64, i64, ptr, ptr, ptr, i64)"),
   };
 
   unsigned count = 1;
@@ -532,24 +529,20 @@ TEST(BackendCABIOracleTests, RecursiveCall1Amd64) {
   Bstatement *rst2 = h.mkReturn(rvals2, FcnTestHarness::NoAppend);
 
   DECLARE_EXPECTED_OUTPUT(exp, R"RAW_RESULT(
-    %p3.ld.0 = load i8, i8* %p3.addr, align 1
+    %p3.ld.0 = load i8, ptr %p3.addr, align 1
     %sub.0 = sub i8 %p3.ld.0, 1
-    %p4.ld.0 = load i8, i8* %p4.addr, align 1
-    %cast.1 = bitcast { float, float, i16, i16, i16 }* %p0.addr to { <2 x float>, i48 }*
-    %field0.0 = getelementptr inbounds { <2 x float>, i48 }, { <2 x float>, i48 }* %cast.1, i32 0, i32 0
-    %ld.1 = load <2 x float>, <2 x float>* %field0.0, align 8
-    %field1.0 = getelementptr inbounds { <2 x float>, i48 }, { <2 x float>, i48 }* %cast.1, i32 0, i32 1
-    %ld.2 = load i48, i48* %field1.0, align 8
-    %cast.2 = bitcast { double, float, float }* %p1.addr to { double, <2 x float> }*
-    %field0.1 = getelementptr inbounds { double, <2 x float> }, { double, <2 x float> }* %cast.2, i32 0, i32 0
-    %ld.3 = load double, double* %field0.1, align 8
-    %field1.1 = getelementptr inbounds { double, <2 x float> }, { double, <2 x float> }* %cast.2, i32 0, i32 1
-    %ld.4 = load <2 x float>, <2 x float>* %field1.1, align 8
-    %call.0 = call addrspace(0) { double, <2 x float> } @foo(i8* nest undef, <2 x float> %ld.1, i48 %ld.2, double %ld.3, <2 x float> %ld.4, i8 zeroext %sub.0, i8 signext %p4.ld.0, { { float, float, i16, i16, i16 }, { double, float, float } }* byval({ { float, float, i16, i16, i16 }, { double, float, float } }) %p5)
-    %cast.3 = bitcast { double, float, float }* %sret.actual.0 to { double, <2 x float> }*
-    store { double, <2 x float> } %call.0, { double, <2 x float> }* %cast.3, align 8
-    %cast.4 = bitcast { double, float, float }* %sret.actual.0 to { double, <2 x float> }*
-    %ld.5 = load { double, <2 x float> }, { double, <2 x float> }* %cast.4, align 8
+    %p4.ld.0 = load i8, ptr %p4.addr, align 1
+    %field0.0 = getelementptr inbounds { <2 x float>, i48 }, ptr %p0.addr, i32 0, i32 0
+    %ld.1 = load <2 x float>, ptr %field0.0, align 8
+    %field1.0 = getelementptr inbounds { <2 x float>, i48 }, ptr %p0.addr, i32 0, i32 1
+    %ld.2 = load i48, ptr %field1.0, align 8
+    %field0.1 = getelementptr inbounds { double, <2 x float> }, ptr %p1.addr, i32 0, i32 0
+    %ld.3 = load double, ptr %field0.1, align 8
+    %field1.1 = getelementptr inbounds { double, <2 x float> }, ptr %p1.addr, i32 0, i32 1
+    %ld.4 = load <2 x float>, ptr %field1.1, align 8
+    %call.0 = call addrspace(0) { double, <2 x float> } @foo(ptr nest undef, <2 x float> %ld.1, i48 %ld.2, double %ld.3, <2 x float> %ld.4, i8 zeroext %sub.0, i8 signext %p4.ld.0, ptr byval({ { float, float, i16, i16, i16 }, { double, float, float } }) %p5)
+    store { double, <2 x float> } %call.0, ptr %sret.actual.0, align 8
+    %ld.5 = load { double, <2 x float> }, ptr %sret.actual.0, align 8
     ret { double, <2 x float> } %ld.5
   )RAW_RESULT");
 
@@ -651,27 +644,21 @@ TEST(BackendCABIOracleTests, RecursiveCall1Arm64) {
   Bstatement *rst2 = h.mkReturn(rvals2, FcnTestHarness::NoAppend);
 
   DECLARE_EXPECTED_OUTPUT(exp, R"RAW_RESULT(
-    %p3.ld.0 = load i8, i8* %p3.addr, align 1
+    %p3.ld.0 = load i8, ptr %p3.addr, align 1
     %sub.0 = sub i8 %p3.ld.0, 1
-    %p4.ld.0 = load i8, i8* %p4.addr, align 1
-    %cast.1 = bitcast { float, float, i16, i16, i16 }* %p0.addr to { i64, i48 }*
-    %field0.0 = getelementptr inbounds { i64, i48 }, { i64, i48 }* %cast.1, i32 0, i32 0
-    %ld.1 = load i64, i64* %field0.0, align 8
-    %field1.0 = getelementptr inbounds { i64, i48 }, { i64, i48 }* %cast.1, i32 0, i32 1
-    %ld.2 = load i48, i48* %field1.0, align 8
-    %cast.2 = bitcast { double, float, float }* %p1.addr to { i64, i64 }*
-    %field0.1 = getelementptr inbounds { i64, i64 }, { i64, i64 }* %cast.2, i32 0, i32 0
-    %ld.3 = load i64, i64* %field0.1, align 8
-    %field1.1 = getelementptr inbounds { i64, i64 }, { i64, i64 }* %cast.2, i32 0, i32 1
-    %ld.4 = load i64, i64* %field1.1, align 8
-    %cast.3 = bitcast { { float, float, i16, i16, i16 }, { double, float, float } }* %doCopy.addr.0 to i8*
-    %cast.4 = bitcast { { float, float, i16, i16, i16 }, { double, float, float } }* %p5 to i8*
-    call addrspace(0) void @llvm.memcpy.p0i8.p0i8.i64(i8* align 8 %cast.3, i8* align 8 %cast.4, i64 32, i1 false)
-    %call.0 = call addrspace(0) { i64, i64 } @foo(i8* nest undef, i64 %ld.1, i48 %ld.2, i64 %ld.3, i64 %ld.4, i8 zeroext %sub.0, i8 signext %p4.ld.0, { { float, float, i16, i16, i16 }, { double, float, float } }* %doCopy.addr.0)
-    %cast.5 = bitcast { double, float, float }* %sret.actual.0 to { i64, i64 }*
-    store { i64, i64 } %call.0, { i64, i64 }* %cast.5, align 8
-    %cast.6 = bitcast { double, float, float }* %sret.actual.0 to { i64, i64 }*
-    %ld.5 = load { i64, i64 }, { i64, i64 }* %cast.6, align 8
+    %p4.ld.0 = load i8, ptr %p4.addr, align 1
+    %field0.0 = getelementptr inbounds { i64, i48 }, ptr %p0.addr, i32 0, i32 0
+    %ld.1 = load i64, ptr %field0.0, align 8
+    %field1.0 = getelementptr inbounds { i64, i48 }, ptr %p0.addr, i32 0, i32 1
+    %ld.2 = load i48, ptr %field1.0, align 8
+    %field0.1 = getelementptr inbounds { i64, i64 }, ptr %p1.addr, i32 0, i32 0
+    %ld.3 = load i64, ptr %field0.1, align 8
+    %field1.1 = getelementptr inbounds { i64, i64 }, ptr %p1.addr, i32 0, i32 1
+    %ld.4 = load i64, ptr %field1.1, align 8
+    call addrspace(0) void @llvm.memcpy.p0.p0.i64(ptr align 8 %doCopy.addr.0, ptr align 8 %p5, i64 32, i1 false)
+    %call.0 = call addrspace(0) { i64, i64 } @foo(ptr nest undef, i64 %ld.1, i48 %ld.2, i64 %ld.3, i64 %ld.4, i8 zeroext %sub.0, i8 signext %p4.ld.0, ptr %doCopy.addr.0)
+    store { i64, i64 } %call.0, ptr %sret.actual.0, align 8
+    %ld.5 = load { i64, i64 }, ptr %sret.actual.0, align 8
     ret { i64, i64 } %ld.5
   )RAW_RESULT");
 
@@ -716,12 +703,9 @@ TEST(BackendCABIOracleTests, PassAndReturnArraysAmd64) {
   h.mkReturn(rvals);
 
   DECLARE_EXPECTED_OUTPUT(exp, R"RAW_RESULT(
-    %cast.0 = bitcast [2 x float]* %p0.addr to <2 x float>*
-    %ld.0 = load <2 x float>, <2 x float>* %cast.0, align 8
-    call addrspace(0) void @foo([3 x double]* sret([3 x double]) "go_sret" %sret.actual.0, i8* nest undef, <2 x float> %ld.0)
-    %cast.1 = bitcast [3 x double]* %sret.formal.0 to i8*
-    %cast.2 = bitcast [3 x double]* %sret.actual.0 to i8*
-    call addrspace(0) void @llvm.memcpy.p0i8.p0i8.i64(i8* align 8 %cast.1, i8* align 8 %cast.2, i64 24, i1 false)
+    %ld.0 = load <2 x float>, ptr %p0.addr, align 8
+    call addrspace(0) void @foo(ptr sret([3 x double]) "go_sret" %sret.actual.0, ptr nest undef, <2 x float> %ld.0)
+    call addrspace(0) void @llvm.memcpy.p0.p0.i64(ptr align 8 %sret.formal.0, ptr align 8 %sret.actual.0, i64 24, i1 false)
     ret void
   )RAW_RESULT");
 
@@ -760,12 +744,10 @@ TEST(BackendCABIOracleTests, PassAndReturnArraysArm64) {
   h.mkReturn(rvals);
 
   DECLARE_EXPECTED_OUTPUT(exp, R"RAW_RESULT(
-    %ld.0 = load [2 x float], [2 x float]* %p0.addr, align 4
-    %call.0 = call addrspace(0) { double, double, double } @foo(i8* nest undef, [2 x float] %ld.0)
-    %cast.1 = bitcast [3 x double]* %sret.actual.0 to { double, double, double }*
-    store { double, double, double } %call.0, { double, double, double }* %cast.1, align 8
-    %cast.2 = bitcast [3 x double]* %sret.actual.0 to { double, double, double }*
-    %ld.1 = load { double, double, double }, { double, double, double }* %cast.2, align 8
+    %ld.0 = load [2 x float], ptr %p0.addr, align 4
+    %call.0 = call addrspace(0) { double, double, double } @foo(ptr nest undef, [2 x float] %ld.0)
+    store { double, double, double } %call.0, ptr %sret.actual.0, align 8
+    %ld.1 = load { double, double, double }, ptr %sret.actual.0, align 8
     ret { double, double, double } %ld.1
   )RAW_RESULT");
 
@@ -813,7 +795,7 @@ TEST_P(BackendCABIOracleTests, EmptyStructParamsAndReturns) {
   h.mkReturn(rvals);
 
   DECLARE_EXPECTED_OUTPUT(exp, R"RAW_RESULT(
-    call addrspace(0) void @foo(i8* nest undef, i32 4)
+    call addrspace(0) void @foo(ptr nest undef, i32 4)
     ret void
   )RAW_RESULT");
 
@@ -895,26 +877,20 @@ TEST(BackendCABIOracleTests, PassAndReturnComplexAmd64) {
   h.mkReturn(rvals);
 
   DECLARE_EXPECTED_OUTPUT(exp, R"RAW_RESULT(
-    %cast.0 = bitcast { float, float }* %p0.addr to <2 x float>*
-    %ld.0 = load <2 x float>, <2 x float>* %cast.0, align 8
-    %field0.0 = getelementptr inbounds { double, double }, { double, double }* %p1.addr, i32 0, i32 0
-    %ld.1 = load double, double* %field0.0, align 8
-    %field1.0 = getelementptr inbounds { double, double }, { double, double }* %p1.addr, i32 0, i32 1
-    %ld.2 = load double, double* %field1.0, align 8
-    %call.0 = call addrspace(0) <2 x float> @foo(i8* nest undef, <2 x float> %ld.0, double %ld.1, double %ld.2)
-    %cast.2 = bitcast { float, float }* %sret.actual.0 to <2 x float>*
-    store <2 x float> %call.0, <2 x float>* %cast.2, align 8
-    %cast.3 = bitcast { float, float }* %z to i8*
-    %cast.4 = bitcast { float, float }* %sret.actual.0 to i8*
-    call addrspace(0) void @llvm.memcpy.p0i8.p0i8.i64(i8* align 4 %cast.3, i8* align 4 %cast.4, i64 8, i1 false)
-    %ld.3 = load <2 x float>, <2 x float>* bitcast ({ float, float }* @const.0 to <2 x float>*), align 8
-    %ld.4 = load double, double* getelementptr inbounds ({ double, double }, { double, double }* @const.1, i32 0, i32 0), align 8
-    %ld.5 = load double, double* getelementptr inbounds ({ double, double }, { double, double }* @const.1, i32 0, i32 1), align 8
-    %call.1 = call addrspace(0) <2 x float> @foo(i8* nest undef, <2 x float> %ld.3, double %ld.4, double %ld.5)
-    %cast.7 = bitcast { float, float }* %sret.actual.1 to <2 x float>*
-    store <2 x float> %call.1, <2 x float>* %cast.7, align 8
-    %cast.8 = bitcast { float, float }* %sret.actual.1 to <2 x float>*
-    %ld.6 = load <2 x float>, <2 x float>* %cast.8, align 8
+    %ld.0 = load <2 x float>, ptr %p0.addr, align 8
+    %field0.0 = getelementptr inbounds { double, double }, ptr %p1.addr, i32 0, i32 0
+    %ld.1 = load double, ptr %field0.0, align 8
+    %field1.0 = getelementptr inbounds { double, double }, ptr %p1.addr, i32 0, i32 1
+    %ld.2 = load double, ptr %field1.0, align 8
+    %call.0 = call addrspace(0) <2 x float> @foo(ptr nest undef, <2 x float> %ld.0, double %ld.1, double %ld.2)
+    store <2 x float> %call.0, ptr %sret.actual.0, align 8
+    call addrspace(0) void @llvm.memcpy.p0.p0.i64(ptr align 4 %z, ptr align 4 %sret.actual.0, i64 8, i1 false)
+    %ld.3 = load <2 x float>, ptr @const.0, align 8
+    %ld.4 = load double, ptr @const.1, align 8
+    %ld.5 = load double, ptr getelementptr inbounds ({ double, double }, ptr @const.1, i32 0, i32 1), align 8
+    %call.1 = call addrspace(0) <2 x float> @foo(ptr nest undef, <2 x float> %ld.3, double %ld.4, double %ld.5)
+    store <2 x float> %call.1, ptr %sret.actual.1, align 8
+    %ld.6 = load <2 x float>, ptr %sret.actual.1, align 8
     ret <2 x float> %ld.6
   )RAW_RESULT");
 
@@ -968,20 +944,16 @@ TEST(BackendCABIOracleTests, PassAndReturnComplexArm64) {
   h.mkReturn(rvals);
 
   DECLARE_EXPECTED_OUTPUT(exp, R"RAW_RESULT(
-    %cast.0 = bitcast { float, float }* %p0.addr to [2 x float]*
-    %ld.0 = load [2 x float], [2 x float]* %cast.0, align 4
-    %cast.1 = bitcast { double, double }* %p1.addr to [2 x double]*
-    %ld.1 = load [2 x double], [2 x double]* %cast.1, align 8
-    %call.0 = call addrspace(0) { float, float } @foo(i8* nest undef, [2 x float] %ld.0, [2 x double] %ld.1)
-    store { float, float } %call.0, { float, float }* %sret.actual.0, align 4
-    %cast.3 = bitcast { float, float }* %z to i8*
-    %cast.4 = bitcast { float, float }* %sret.actual.0 to i8*
-    call addrspace(0) void @llvm.memcpy.p0i8.p0i8.i64(i8* align 4 %cast.3, i8* align 4 %cast.4, i64 8, i1 false)
-    %ld.2 = load [2 x float], [2 x float]* bitcast ({ float, float }* @const.0 to [2 x float]*), align 4
-    %ld.3 = load [2 x double], [2 x double]* bitcast ({ double, double }* @const.1 to [2 x double]*), align 8
-    %call.1 = call addrspace(0) { float, float } @foo(i8* nest undef, [2 x float] %ld.2, [2 x double] %ld.3)
-    store { float, float } %call.1, { float, float }* %sret.actual.1, align 4
-    %ld.4 = load { float, float }, { float, float }* %sret.actual.1, align 4
+    %ld.0 = load [2 x float], ptr %p0.addr, align 4
+    %ld.1 = load [2 x double], ptr %p1.addr, align 8
+    %call.0 = call addrspace(0) { float, float } @foo(ptr nest undef, [2 x float] %ld.0, [2 x double] %ld.1)
+    store { float, float } %call.0, ptr %sret.actual.0, align 4
+    call addrspace(0) void @llvm.memcpy.p0.p0.i64(ptr align 4 %z, ptr align 4 %sret.actual.0, i64 8, i1 false)
+    %ld.2 = load [2 x float], ptr @const.0, align 4
+    %ld.3 = load [2 x double], ptr @const.1, align 8
+    %call.1 = call addrspace(0) { float, float } @foo(ptr nest undef, [2 x float] %ld.2, [2 x double] %ld.3)
+    store { float, float } %call.1, ptr %sret.actual.1, align 4
+    %ld.4 = load { float, float }, ptr %sret.actual.1, align 4
     ret { float, float } %ld.4
   )RAW_RESULT");
 

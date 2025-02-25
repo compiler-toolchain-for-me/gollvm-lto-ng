@@ -196,7 +196,7 @@ TEST_P(BackendExprTests, MakeZeroValueExpr) {
   Btype *pbt = be->pointer_type(bt);
   Bexpression *bpzero = be->zero_expression(pbt);
   ASSERT_TRUE(bpzero != nullptr);
-  EXPECT_EQ(repr(bpzero->value()), "i8* null");
+  EXPECT_EQ(repr(bpzero->value()), "ptr null");
   Btype *bi32t = be->integer_type(false, 32);
   Btype *s2t = mkBackendStruct(be, pbt, "f1", bi32t, "f2", nullptr);
   Bexpression *bszero = be->zero_expression(s2t);
@@ -244,10 +244,9 @@ TEST_P(BackendExprTests, TestConversionExpressions) {
   h.mkAssign(fex, mkInt32Const(be, 22));
 
   DECLARE_EXPECTED_OUTPUT(exp, R"RAW_RESULT(
-    store i64 0, i64* %x, align 8
-    %cast.0 = bitcast i64* %x to { i32, i32 }*
-    %field.0 = getelementptr inbounds { i32, i32 }, { i32, i32 }* %cast.0, i32 0, i32 1
-    store i32 22, i32* %field.0, align 4
+    store i64 0, ptr %x, align 8
+    %field.0 = getelementptr inbounds { i32, i32 }, ptr %x, i32 0, i32 1
+    store i32 22, ptr %field.0, align 4
   )RAW_RESULT");
 
   bool isOK = h.expectBlock(exp);
@@ -295,14 +294,13 @@ TEST_P(BackendExprTests, TestMoreConversionExpressions) {
   }
 
   DECLARE_EXPECTED_OUTPUT(exp, R"RAW_RESULT(
-    %param3.ld.0 = load i64*, i64** %param3.addr, align 8
-    %cast.0 = bitcast i64* %param3.ld.0 to i32*
-    store i32 5, i32* %cast.0, align 4
-    store double 0.000000e+00, double* %p, align 8
-    %p.ld.0 = load double, double* %p, align 8
+    %param3.ld.0 = load ptr, ptr %param3.addr, align 8
+    store i32 5, ptr %param3.ld.0, align 4
+    store double 0.000000e+00, ptr %p, align 8
+    %p.ld.0 = load double, ptr %p, align 8
     %ftoui.0 = fptoui double %p.ld.0 to i64
-    %itpcast.0 = inttoptr i64 %ftoui.0 to i32*
-    store i32 5, i32* %itpcast.0, align 4
+    %itpcast.0 = inttoptr i64 %ftoui.0 to ptr
+    store i32 5, ptr %itpcast.0, align 4
   )RAW_RESULT");
 
   bool isOK = h.expectBlock(exp);
@@ -354,92 +352,92 @@ TEST_P(BackendExprTests, TestFloatConversionExpressions) {
   }
 
   DECLARE_EXPECTED_OUTPUT(exp, R"RAW_RESULT(
-    %p1.ld.0 = load double, double* %p1.addr, align 8
+    %p1.ld.0 = load double, ptr %p1.addr, align 8
     %fptrunc.0 = fptrunc double %p1.ld.0 to float
-    store float %fptrunc.0, float* %p0.addr, align 4
-    %p0.ld.0 = load float, float* %p0.addr, align 4
+    store float %fptrunc.0, ptr %p0.addr, align 4
+    %p0.ld.0 = load float, ptr %p0.addr, align 4
     %fpext.0 = fpext float %p0.ld.0 to double
-    store double %fpext.0, double* %p1.addr, align 8
-    %p2.ld.0 = load i32, i32* %p2.addr, align 4
+    store double %fpext.0, ptr %p1.addr, align 8
+    %p2.ld.0 = load i32, ptr %p2.addr, align 4
     %sitof.0 = sitofp i32 %p2.ld.0 to float
-    store float %sitof.0, float* %p0.addr, align 4
-    %p0.ld.1 = load float, float* %p0.addr, align 4
+    store float %sitof.0, ptr %p0.addr, align 4
+    %p0.ld.1 = load float, ptr %p0.addr, align 4
     %ftosi.0 = fptosi float %p0.ld.1 to i32
-    store i32 %ftosi.0, i32* %p2.addr, align 4
-    %p2.ld.1 = load i32, i32* %p2.addr, align 4
+    store i32 %ftosi.0, ptr %p2.addr, align 4
+    %p2.ld.1 = load i32, ptr %p2.addr, align 4
     %sitof.1 = sitofp i32 %p2.ld.1 to double
-    store double %sitof.1, double* %p1.addr, align 8
-    %p1.ld.1 = load double, double* %p1.addr, align 8
+    store double %sitof.1, ptr %p1.addr, align 8
+    %p1.ld.1 = load double, ptr %p1.addr, align 8
     %ftosi.1 = fptosi double %p1.ld.1 to i32
-    store i32 %ftosi.1, i32* %p2.addr, align 4
-    %p3.ld.0 = load i64, i64* %p3.addr, align 8
+    store i32 %ftosi.1, ptr %p2.addr, align 4
+    %p3.ld.0 = load i64, ptr %p3.addr, align 8
     %sitof.2 = sitofp i64 %p3.ld.0 to float
-    store float %sitof.2, float* %p0.addr, align 4
-    %p0.ld.2 = load float, float* %p0.addr, align 4
+    store float %sitof.2, ptr %p0.addr, align 4
+    %p0.ld.2 = load float, ptr %p0.addr, align 4
     %ftosi.2 = fptosi float %p0.ld.2 to i64
-    store i64 %ftosi.2, i64* %p3.addr, align 8
-    %p3.ld.1 = load i64, i64* %p3.addr, align 8
+    store i64 %ftosi.2, ptr %p3.addr, align 8
+    %p3.ld.1 = load i64, ptr %p3.addr, align 8
     %sitof.3 = sitofp i64 %p3.ld.1 to double
-    store double %sitof.3, double* %p1.addr, align 8
-    %p1.ld.2 = load double, double* %p1.addr, align 8
+    store double %sitof.3, ptr %p1.addr, align 8
+    %p1.ld.2 = load double, ptr %p1.addr, align 8
     %ftosi.3 = fptosi double %p1.ld.2 to i64
-    store i64 %ftosi.3, i64* %p3.addr, align 8
-    %p3.ld.2 = load i64, i64* %p3.addr, align 8
+    store i64 %ftosi.3, ptr %p3.addr, align 8
+    %p3.ld.2 = load i64, ptr %p3.addr, align 8
     %trunc.0 = trunc i64 %p3.ld.2 to i32
-    store i32 %trunc.0, i32* %p2.addr, align 4
-    %p2.ld.2 = load i32, i32* %p2.addr, align 4
+    store i32 %trunc.0, ptr %p2.addr, align 4
+    %p2.ld.2 = load i32, ptr %p2.addr, align 4
     %sext.0 = sext i32 %p2.ld.2 to i64
-    store i64 %sext.0, i64* %p3.addr, align 8
-    %p4.ld.0 = load i32, i32* %p4.addr, align 4
+    store i64 %sext.0, ptr %p3.addr, align 8
+    %p4.ld.0 = load i32, ptr %p4.addr, align 4
     %uitof.0 = uitofp i32 %p4.ld.0 to float
-    store float %uitof.0, float* %p0.addr, align 4
-    %p0.ld.3 = load float, float* %p0.addr, align 4
+    store float %uitof.0, ptr %p0.addr, align 4
+    %p0.ld.3 = load float, ptr %p0.addr, align 4
     %ftoui.0 = fptoui float %p0.ld.3 to i32
-    store i32 %ftoui.0, i32* %p4.addr, align 4
-    %p4.ld.1 = load i32, i32* %p4.addr, align 4
+    store i32 %ftoui.0, ptr %p4.addr, align 4
+    %p4.ld.1 = load i32, ptr %p4.addr, align 4
     %uitof.1 = uitofp i32 %p4.ld.1 to double
-    store double %uitof.1, double* %p1.addr, align 8
-    %p1.ld.3 = load double, double* %p1.addr, align 8
+    store double %uitof.1, ptr %p1.addr, align 8
+    %p1.ld.3 = load double, ptr %p1.addr, align 8
     %ftoui.1 = fptoui double %p1.ld.3 to i32
-    store i32 %ftoui.1, i32* %p4.addr, align 4
-    %p4.ld.2 = load i32, i32* %p4.addr, align 4
-    store i32 %p4.ld.2, i32* %p2.addr, align 4
-    %p2.ld.3 = load i32, i32* %p2.addr, align 4
-    store i32 %p2.ld.3, i32* %p4.addr, align 4
-    %p4.ld.3 = load i32, i32* %p4.addr, align 4
+    store i32 %ftoui.1, ptr %p4.addr, align 4
+    %p4.ld.2 = load i32, ptr %p4.addr, align 4
+    store i32 %p4.ld.2, ptr %p2.addr, align 4
+    %p2.ld.3 = load i32, ptr %p2.addr, align 4
+    store i32 %p2.ld.3, ptr %p4.addr, align 4
+    %p4.ld.3 = load i32, ptr %p4.addr, align 4
     %zext.0 = zext i32 %p4.ld.3 to i64
-    store i64 %zext.0, i64* %p3.addr, align 8
-    %p3.ld.3 = load i64, i64* %p3.addr, align 8
+    store i64 %zext.0, ptr %p3.addr, align 8
+    %p3.ld.3 = load i64, ptr %p3.addr, align 8
     %trunc.1 = trunc i64 %p3.ld.3 to i32
-    store i32 %trunc.1, i32* %p4.addr, align 4
-    %p5.ld.0 = load i64, i64* %p5.addr, align 8
+    store i32 %trunc.1, ptr %p4.addr, align 4
+    %p5.ld.0 = load i64, ptr %p5.addr, align 8
     %uitof.2 = uitofp i64 %p5.ld.0 to float
-    store float %uitof.2, float* %p0.addr, align 4
-    %p0.ld.4 = load float, float* %p0.addr, align 4
+    store float %uitof.2, ptr %p0.addr, align 4
+    %p0.ld.4 = load float, ptr %p0.addr, align 4
     %ftoui.2 = fptoui float %p0.ld.4 to i64
-    store i64 %ftoui.2, i64* %p5.addr, align 8
-    %p5.ld.1 = load i64, i64* %p5.addr, align 8
+    store i64 %ftoui.2, ptr %p5.addr, align 8
+    %p5.ld.1 = load i64, ptr %p5.addr, align 8
     %uitof.3 = uitofp i64 %p5.ld.1 to double
-    store double %uitof.3, double* %p1.addr, align 8
-    %p1.ld.4 = load double, double* %p1.addr, align 8
+    store double %uitof.3, ptr %p1.addr, align 8
+    %p1.ld.4 = load double, ptr %p1.addr, align 8
     %ftoui.3 = fptoui double %p1.ld.4 to i64
-    store i64 %ftoui.3, i64* %p5.addr, align 8
-    %p5.ld.2 = load i64, i64* %p5.addr, align 8
+    store i64 %ftoui.3, ptr %p5.addr, align 8
+    %p5.ld.2 = load i64, ptr %p5.addr, align 8
     %trunc.2 = trunc i64 %p5.ld.2 to i32
-    store i32 %trunc.2, i32* %p2.addr, align 4
-    %p2.ld.4 = load i32, i32* %p2.addr, align 4
+    store i32 %trunc.2, ptr %p2.addr, align 4
+    %p2.ld.4 = load i32, ptr %p2.addr, align 4
     %sext.1 = sext i32 %p2.ld.4 to i64
-    store i64 %sext.1, i64* %p5.addr, align 8
-    %p5.ld.3 = load i64, i64* %p5.addr, align 8
-    store i64 %p5.ld.3, i64* %p3.addr, align 8
-    %p3.ld.4 = load i64, i64* %p3.addr, align 8
-    store i64 %p3.ld.4, i64* %p5.addr, align 8
-    %p5.ld.4 = load i64, i64* %p5.addr, align 8
+    store i64 %sext.1, ptr %p5.addr, align 8
+    %p5.ld.3 = load i64, ptr %p5.addr, align 8
+    store i64 %p5.ld.3, ptr %p3.addr, align 8
+    %p3.ld.4 = load i64, ptr %p3.addr, align 8
+    store i64 %p3.ld.4, ptr %p5.addr, align 8
+    %p5.ld.4 = load i64, ptr %p5.addr, align 8
     %trunc.3 = trunc i64 %p5.ld.4 to i32
-    store i32 %trunc.3, i32* %p4.addr, align 4
-    %p4.ld.4 = load i32, i32* %p4.addr, align 4
+    store i32 %trunc.3, ptr %p4.addr, align 4
+    %p4.ld.4 = load i32, ptr %p4.addr, align 4
     %zext.1 = zext i32 %p4.ld.4 to i64
-    store i64 %zext.1, i64* %p5.addr, align 8
+    store i64 %zext.1, ptr %p5.addr, align 8
   )RAW_RESULT");
 
   bool isOK = h.expectBlock(exp);
@@ -493,7 +491,7 @@ TEST_P(BackendExprTests, TestComplexConversionExpression) {
   h.mkAssign(xvex4, convex4);
 
   DECLARE_EXPECTED_OUTPUT(exp, R"RAW_RESULT(
-    define void @foo(i8* nest %nest.0) #0 {
+  define void @foo(ptr nest %nest.0) #0 {
   entry:
     %tmp.3 = alloca { double, double }, align 8
     %tmp.2 = alloca { float, float }, align 4
@@ -503,52 +501,36 @@ TEST_P(BackendExprTests, TestComplexConversionExpression) {
     %b = alloca { float, float }, align 4
     %x = alloca { double, double }, align 8
     %y = alloca { double, double }, align 8
-    %cast.0 = bitcast { float, float }* %a to i8*
-    call void @llvm.memcpy.p0i8.p0i8.i64(i8* align 4 %cast.0, i8* align 4 bitcast ({ float, float }* @const.0 to i8*), i64 8, i1 false)
-    %cast.1 = bitcast { float, float }* %b to i8*
-    call void @llvm.memcpy.p0i8.p0i8.i64(i8* align 4 %cast.1, i8* align 4 bitcast ({ float, float }* @const.0 to i8*), i64 8, i1 false)
-    %cast.2 = bitcast { double, double }* %x to i8*
-    call void @llvm.memcpy.p0i8.p0i8.i64(i8* align 8 %cast.2, i8* align 8 bitcast ({ double, double }* @const.1 to i8*), i64 16, i1 false)
-    %cast.3 = bitcast { double, double }* %y to i8*
-    call void @llvm.memcpy.p0i8.p0i8.i64(i8* align 8 %cast.3, i8* align 8 bitcast ({ double, double }* @const.1 to i8*), i64 16, i1 false)
-    %cast.4 = bitcast { double, double }* %tmp.0 to i8*
-    %cast.5 = bitcast { double, double }* %x to i8*
-    call void @llvm.memcpy.p0i8.p0i8.i64(i8* align 8 %cast.4, i8* align 8 %cast.5, i64 16, i1 false)
-    %field.0 = getelementptr inbounds { double, double }, { double, double }* %tmp.0, i32 0, i32 0
-    %.real.ld.0 = load double, double* %field.0, align 8
+    call void @llvm.memcpy.p0.p0.i64(ptr align 4 %a, ptr align 4 @const.0, i64 8, i1 false)
+    call void @llvm.memcpy.p0.p0.i64(ptr align 4 %b, ptr align 4 @const.0, i64 8, i1 false)
+    call void @llvm.memcpy.p0.p0.i64(ptr align 8 %x, ptr align 8 @const.1, i64 16, i1 false)
+    call void @llvm.memcpy.p0.p0.i64(ptr align 8 %y, ptr align 8 @const.1, i64 16, i1 false)
+    call void @llvm.memcpy.p0.p0.i64(ptr align 8 %tmp.0, ptr align 8 %x, i64 16, i1 false)
+    %field.0 = getelementptr inbounds { double, double }, ptr %tmp.0, i32 0, i32 0
+    %.real.ld.0 = load double, ptr %field.0, align 8
     %fptrunc.0 = fptrunc double %.real.ld.0 to float
-    %field.1 = getelementptr inbounds { double, double }, { double, double }* %tmp.0, i32 0, i32 1
-    %.imag.ld.0 = load double, double* %field.1, align 8
+    %field.1 = getelementptr inbounds { double, double }, ptr %tmp.0, i32 0, i32 1
+    %.imag.ld.0 = load double, ptr %field.1, align 8
     %fptrunc.1 = fptrunc double %.imag.ld.0 to float
-    %field.2 = getelementptr inbounds { float, float }, { float, float }* %tmp.1, i32 0, i32 0
-    store float %fptrunc.0, float* %field.2, align 4
-    %field.3 = getelementptr inbounds { float, float }, { float, float }* %tmp.1, i32 0, i32 1
-    store float %fptrunc.1, float* %field.3, align 4
-    %cast.6 = bitcast { float, float }* %a to i8*
-    %cast.7 = bitcast { float, float }* %tmp.1 to i8*
-    call void @llvm.memcpy.p0i8.p0i8.i64(i8* align 4 %cast.6, i8* align 4 %cast.7, i64 8, i1 false)
-    %cast.8 = bitcast { float, float }* %tmp.2 to i8*
-    %cast.9 = bitcast { float, float }* %b to i8*
-    call void @llvm.memcpy.p0i8.p0i8.i64(i8* align 4 %cast.8, i8* align 4 %cast.9, i64 8, i1 false)
-    %field.4 = getelementptr inbounds { float, float }, { float, float }* %tmp.2, i32 0, i32 0
-    %.real.ld.1 = load float, float* %field.4, align 4
+    %field.2 = getelementptr inbounds { float, float }, ptr %tmp.1, i32 0, i32 0
+    store float %fptrunc.0, ptr %field.2, align 4
+    %field.3 = getelementptr inbounds { float, float }, ptr %tmp.1, i32 0, i32 1
+    store float %fptrunc.1, ptr %field.3, align 4
+    call void @llvm.memcpy.p0.p0.i64(ptr align 4 %a, ptr align 4 %tmp.1, i64 8, i1 false)
+    call void @llvm.memcpy.p0.p0.i64(ptr align 4 %tmp.2, ptr align 4 %b, i64 8, i1 false)
+    %field.4 = getelementptr inbounds { float, float }, ptr %tmp.2, i32 0, i32 0
+    %.real.ld.1 = load float, ptr %field.4, align 4
     %fpext.0 = fpext float %.real.ld.1 to double
-    %field.5 = getelementptr inbounds { float, float }, { float, float }* %tmp.2, i32 0, i32 1
-    %.imag.ld.1 = load float, float* %field.5, align 4
+    %field.5 = getelementptr inbounds { float, float }, ptr %tmp.2, i32 0, i32 1
+    %.imag.ld.1 = load float, ptr %field.5, align 4
     %fpext.1 = fpext float %.imag.ld.1 to double
-    %field.6 = getelementptr inbounds { double, double }, { double, double }* %tmp.3, i32 0, i32 0
-    store double %fpext.0, double* %field.6, align 8
-    %field.7 = getelementptr inbounds { double, double }, { double, double }* %tmp.3, i32 0, i32 1
-    store double %fpext.1, double* %field.7, align 8
-    %cast.10 = bitcast { double, double }* %y to i8*
-    %cast.11 = bitcast { double, double }* %tmp.3 to i8*
-    call void @llvm.memcpy.p0i8.p0i8.i64(i8* align 8 %cast.10, i8* align 8 %cast.11, i64 16, i1 false)
-    %cast.12 = bitcast { float, float }* %a to i8*
-    %cast.13 = bitcast { float, float }* %b to i8*
-    call void @llvm.memcpy.p0i8.p0i8.i64(i8* align 4 %cast.12, i8* align 4 %cast.13, i64 8, i1 false)
-    %cast.14 = bitcast { double, double }* %x to i8*
-    %cast.15 = bitcast { double, double }* %y to i8*
-    call void @llvm.memcpy.p0i8.p0i8.i64(i8* align 8 %cast.14, i8* align 8 %cast.15, i64 16, i1 false)
+    %field.6 = getelementptr inbounds { double, double }, ptr %tmp.3, i32 0, i32 0
+    store double %fpext.0, ptr %field.6, align 8
+    %field.7 = getelementptr inbounds { double, double }, ptr %tmp.3, i32 0, i32 1
+    store double %fpext.1, ptr %field.7, align 8
+    call void @llvm.memcpy.p0.p0.i64(ptr align 8 %y, ptr align 8 %tmp.3, i64 16, i1 false)
+    call void @llvm.memcpy.p0.p0.i64(ptr align 4 %a, ptr align 4 %b, i64 8, i1 false)
+    call void @llvm.memcpy.p0.p0.i64(ptr align 8 %x, ptr align 8 %y, i64 16, i1 false)
     ret void
   }
   )RAW_RESULT");
@@ -630,61 +612,61 @@ TEST_P(BackendExprTests, TestCompareOps) {
   }
 
   DECLARE_EXPECTED_OUTPUT(exp, R"RAW_RESULT(
-    store i64 0, i64* %x, align 8
-    store i64 0, i64* %y, align 8
-    store double 0.000000e+00, double* %z, align 8
-    %x.ld.0 = load i64, i64* %x, align 8
+    store i64 0, ptr %x, align 8
+    store i64 0, ptr %y, align 8
+    store double 0.000000e+00, ptr %z, align 8
+    %x.ld.0 = load i64, ptr %x, align 8
     %icmp.0 = icmp eq i64 9, %x.ld.0
     %zext.0 = zext i1 %icmp.0 to i8
-    %x.ld.1 = load i64, i64* %x, align 8
+    %x.ld.1 = load i64, ptr %x, align 8
     %icmp.1 = icmp ne i64 9, %x.ld.1
     %zext.1 = zext i1 %icmp.1 to i8
-    %x.ld.2 = load i64, i64* %x, align 8
+    %x.ld.2 = load i64, ptr %x, align 8
     %icmp.2 = icmp slt i64 9, %x.ld.2
     %zext.2 = zext i1 %icmp.2 to i8
-    %x.ld.3 = load i64, i64* %x, align 8
+    %x.ld.3 = load i64, ptr %x, align 8
     %icmp.3 = icmp sle i64 9, %x.ld.3
     %zext.3 = zext i1 %icmp.3 to i8
-    %x.ld.4 = load i64, i64* %x, align 8
+    %x.ld.4 = load i64, ptr %x, align 8
     %icmp.4 = icmp sgt i64 9, %x.ld.4
     %zext.4 = zext i1 %icmp.4 to i8
-    %x.ld.5 = load i64, i64* %x, align 8
+    %x.ld.5 = load i64, ptr %x, align 8
     %icmp.5 = icmp sge i64 9, %x.ld.5
     %zext.5 = zext i1 %icmp.5 to i8
-    %y.ld.0 = load i64, i64* %y, align 8
+    %y.ld.0 = load i64, ptr %y, align 8
     %icmp.6 = icmp eq i64 9, %y.ld.0
     %zext.6 = zext i1 %icmp.6 to i8
-    %y.ld.1 = load i64, i64* %y, align 8
+    %y.ld.1 = load i64, ptr %y, align 8
     %icmp.7 = icmp ne i64 9, %y.ld.1
     %zext.7 = zext i1 %icmp.7 to i8
-    %y.ld.2 = load i64, i64* %y, align 8
+    %y.ld.2 = load i64, ptr %y, align 8
     %icmp.8 = icmp ult i64 9, %y.ld.2
     %zext.8 = zext i1 %icmp.8 to i8
-    %y.ld.3 = load i64, i64* %y, align 8
+    %y.ld.3 = load i64, ptr %y, align 8
     %icmp.9 = icmp ule i64 9, %y.ld.3
     %zext.9 = zext i1 %icmp.9 to i8
-    %y.ld.4 = load i64, i64* %y, align 8
+    %y.ld.4 = load i64, ptr %y, align 8
     %icmp.10 = icmp ugt i64 9, %y.ld.4
     %zext.10 = zext i1 %icmp.10 to i8
-    %y.ld.5 = load i64, i64* %y, align 8
+    %y.ld.5 = load i64, ptr %y, align 8
     %icmp.11 = icmp uge i64 9, %y.ld.5
     %zext.11 = zext i1 %icmp.11 to i8
-    %z.ld.0 = load double, double* %z, align 8
+    %z.ld.0 = load double, ptr %z, align 8
     %fcmp.0 = fcmp oeq double 9.000000e+00, %z.ld.0
     %zext.12 = zext i1 %fcmp.0 to i8
-    %z.ld.1 = load double, double* %z, align 8
+    %z.ld.1 = load double, ptr %z, align 8
     %fcmp.1 = fcmp une double 9.000000e+00, %z.ld.1
     %zext.13 = zext i1 %fcmp.1 to i8
-    %z.ld.2 = load double, double* %z, align 8
+    %z.ld.2 = load double, ptr %z, align 8
     %fcmp.2 = fcmp olt double 9.000000e+00, %z.ld.2
     %zext.14 = zext i1 %fcmp.2 to i8
-    %z.ld.3 = load double, double* %z, align 8
+    %z.ld.3 = load double, ptr %z, align 8
     %fcmp.3 = fcmp ole double 9.000000e+00, %z.ld.3
     %zext.15 = zext i1 %fcmp.3 to i8
-    %z.ld.4 = load double, double* %z, align 8
+    %z.ld.4 = load double, ptr %z, align 8
     %fcmp.4 = fcmp ogt double 9.000000e+00, %z.ld.4
     %zext.16 = zext i1 %fcmp.4 to i8
-    %z.ld.5 = load double, double* %z, align 8
+    %z.ld.5 = load double, ptr %z, align 8
     %fcmp.5 = fcmp oge double 9.000000e+00, %z.ld.5
     %zext.17 = zext i1 %fcmp.5 to i8
   )RAW_RESULT");
@@ -727,15 +709,15 @@ TEST_P(BackendExprTests, TestArithOps) {
   }
 
   DECLARE_EXPECTED_OUTPUT(exp, R"RAW_RESULT(
-    store i64 0, i64* %x, align 8
-    store double 0.000000e+00, double* %y, align 8
-    %x.ld.0 = load i64, i64* %x, align 8
+    store i64 0, ptr %x, align 8
+    store double 0.000000e+00, ptr %y, align 8
+    %x.ld.0 = load i64, ptr %x, align 8
     %add.0 = add i64 9, %x.ld.0
-    %x.ld.1 = load i64, i64* %x, align 8
+    %x.ld.1 = load i64, ptr %x, align 8
     %sub.0 = sub i64 9, %x.ld.1
-    %y.ld.0 = load double, double* %y, align 8
+    %y.ld.0 = load double, ptr %y, align 8
     %fadd.0 = fadd double 9.000000e+00, %y.ld.0
-    %y.ld.1 = load double, double* %y, align 8
+    %y.ld.1 = load double, ptr %y, align 8
     %fsub.0 = fsub double 9.000000e+00, %y.ld.1
   )RAW_RESULT");
 
@@ -769,16 +751,16 @@ TEST_P(BackendExprTests, TestMoreArith) {
   h.mkAssign(vex, ypzpw);
 
   DECLARE_EXPECTED_OUTPUT(exp, R"RAW_RESULT(
-    store i64 0, i64* %x, align 8
-    store i64 9, i64* %y, align 8
-    store i64 10, i64* %z, align 8
-    store i64 11, i64* %w, align 8
-    %y.ld.0 = load i64, i64* %y, align 8
-    %z.ld.0 = load i64, i64* %z, align 8
+    store i64 0, ptr %x, align 8
+    store i64 9, ptr %y, align 8
+    store i64 10, ptr %z, align 8
+    store i64 11, ptr %w, align 8
+    %y.ld.0 = load i64, ptr %y, align 8
+    %z.ld.0 = load i64, ptr %z, align 8
     %add.0 = add i64 %y.ld.0, %z.ld.0
-    %w.ld.0 = load i64, i64* %w, align 8
+    %w.ld.0 = load i64, ptr %w, align 8
     %add.1 = add i64 %add.0, %w.ld.0
-    store i64 %add.1, i64* %x, align 8
+    store i64 %add.1, ptr %x, align 8
   )RAW_RESULT");
 
   bool isOK = h.expectBlock(exp);
@@ -825,65 +807,65 @@ TEST_P(BackendExprTests, TestLogicalOps) {
   }
 
   DECLARE_EXPECTED_OUTPUT(exp, R"RAW_RESULT(
-    store i64 0, i64* %x, align 8
-    store i64 0, i64* %y, align 8
-    store i8 0, i8* %z, align 1
-    store i64 0, i64* %x2, align 8
-    store i64 0, i64* %y2, align 8
-    store i8 0, i8* %z2, align 1
-    %x.ld.0 = load i64, i64* %x, align 8
-    %x2.ld.0 = load i64, i64* %x2, align 8
+    store i64 0, ptr %x, align 8
+    store i64 0, ptr %y, align 8
+    store i8 0, ptr %z, align 1
+    store i64 0, ptr %x2, align 8
+    store i64 0, ptr %y2, align 8
+    store i8 0, ptr %z2, align 1
+    %x.ld.0 = load i64, ptr %x, align 8
+    %x2.ld.0 = load i64, ptr %x2, align 8
     %iand.0 = and i64 %x.ld.0, %x2.ld.0
-    %x.ld.1 = load i64, i64* %x, align 8
-    %x2.ld.1 = load i64, i64* %x2, align 8
+    %x.ld.1 = load i64, ptr %x, align 8
+    %x2.ld.1 = load i64, ptr %x2, align 8
     %ior.0 = or i64 %x.ld.1, %x2.ld.1
-    %x.ld.2 = load i64, i64* %x, align 8
-    %x2.ld.2 = load i64, i64* %x2, align 8
+    %x.ld.2 = load i64, ptr %x, align 8
+    %x2.ld.2 = load i64, ptr %x2, align 8
     %iand.1 = and i64 %x.ld.2, %x2.ld.2
-    %x.ld.3 = load i64, i64* %x, align 8
-    %x2.ld.3 = load i64, i64* %x2, align 8
+    %x.ld.3 = load i64, ptr %x, align 8
+    %x2.ld.3 = load i64, ptr %x2, align 8
     %ior.1 = or i64 %x.ld.3, %x2.ld.3
-    %x.ld.4 = load i64, i64* %x, align 8
-    %x2.ld.4 = load i64, i64* %x2, align 8
+    %x.ld.4 = load i64, ptr %x, align 8
+    %x2.ld.4 = load i64, ptr %x2, align 8
     %xor.0 = xor i64 %x.ld.4, %x2.ld.4
-    %x.ld.5 = load i64, i64* %x, align 8
-    %x2.ld.5 = load i64, i64* %x2, align 8
+    %x.ld.5 = load i64, ptr %x, align 8
+    %x2.ld.5 = load i64, ptr %x2, align 8
     %iand.2 = and i64 %x.ld.5, %x2.ld.5
-    %y.ld.0 = load i64, i64* %y, align 8
-    %y2.ld.0 = load i64, i64* %y2, align 8
+    %y.ld.0 = load i64, ptr %y, align 8
+    %y2.ld.0 = load i64, ptr %y2, align 8
     %iand.3 = and i64 %y.ld.0, %y2.ld.0
-    %y.ld.1 = load i64, i64* %y, align 8
-    %y2.ld.1 = load i64, i64* %y2, align 8
+    %y.ld.1 = load i64, ptr %y, align 8
+    %y2.ld.1 = load i64, ptr %y2, align 8
     %ior.2 = or i64 %y.ld.1, %y2.ld.1
-    %y.ld.2 = load i64, i64* %y, align 8
-    %y2.ld.2 = load i64, i64* %y2, align 8
+    %y.ld.2 = load i64, ptr %y, align 8
+    %y2.ld.2 = load i64, ptr %y2, align 8
     %iand.4 = and i64 %y.ld.2, %y2.ld.2
-    %y.ld.3 = load i64, i64* %y, align 8
-    %y2.ld.3 = load i64, i64* %y2, align 8
+    %y.ld.3 = load i64, ptr %y, align 8
+    %y2.ld.3 = load i64, ptr %y2, align 8
     %ior.3 = or i64 %y.ld.3, %y2.ld.3
-    %y.ld.4 = load i64, i64* %y, align 8
-    %y2.ld.4 = load i64, i64* %y2, align 8
+    %y.ld.4 = load i64, ptr %y, align 8
+    %y2.ld.4 = load i64, ptr %y2, align 8
     %xor.1 = xor i64 %y.ld.4, %y2.ld.4
-    %y.ld.5 = load i64, i64* %y, align 8
-    %y2.ld.5 = load i64, i64* %y2, align 8
+    %y.ld.5 = load i64, ptr %y, align 8
+    %y2.ld.5 = load i64, ptr %y2, align 8
     %iand.5 = and i64 %y.ld.5, %y2.ld.5
-    %z.ld.0 = load i8, i8* %z, align 1
-    %z2.ld.0 = load i8, i8* %z2, align 1
+    %z.ld.0 = load i8, ptr %z, align 1
+    %z2.ld.0 = load i8, ptr %z2, align 1
     %iand.6 = and i8 %z.ld.0, %z2.ld.0
-    %z.ld.1 = load i8, i8* %z, align 1
-    %z2.ld.1 = load i8, i8* %z2, align 1
+    %z.ld.1 = load i8, ptr %z, align 1
+    %z2.ld.1 = load i8, ptr %z2, align 1
     %ior.4 = or i8 %z.ld.1, %z2.ld.1
-    %z.ld.2 = load i8, i8* %z, align 1
-    %z2.ld.2 = load i8, i8* %z2, align 1
+    %z.ld.2 = load i8, ptr %z, align 1
+    %z2.ld.2 = load i8, ptr %z2, align 1
     %iand.7 = and i8 %z.ld.2, %z2.ld.2
-    %z.ld.3 = load i8, i8* %z, align 1
-    %z2.ld.3 = load i8, i8* %z2, align 1
+    %z.ld.3 = load i8, ptr %z, align 1
+    %z2.ld.3 = load i8, ptr %z2, align 1
     %ior.5 = or i8 %z.ld.3, %z2.ld.3
-    %z.ld.4 = load i8, i8* %z, align 1
-    %z2.ld.4 = load i8, i8* %z2, align 1
+    %z.ld.4 = load i8, ptr %z, align 1
+    %z2.ld.4 = load i8, ptr %z2, align 1
     %xor.2 = xor i8 %z.ld.4, %z2.ld.4
-    %z.ld.5 = load i8, i8* %z, align 1
-    %z2.ld.5 = load i8, i8* %z2, align 1
+    %z.ld.5 = load i8, ptr %z, align 1
+    %z2.ld.5 = load i8, ptr %z2, align 1
     %iand.8 = and i8 %z.ld.5, %z2.ld.5
   )RAW_RESULT");
 
@@ -931,24 +913,24 @@ TEST_P(BackendExprTests, TestMulDiv) {
   }
 
   DECLARE_EXPECTED_OUTPUT(exp, R"RAW_RESULT(
-    store i16 0, i16* %x, align 2
-    store i16 0, i16* %y, align 2
-    store double 0.000000e+00, double* %z, align 8
-    %x.ld.0 = load i16, i16* %x, align 2
+    store i16 0, ptr %x, align 2
+    store i16 0, ptr %y, align 2
+    store double 0.000000e+00, ptr %z, align 8
+    %x.ld.0 = load i16, ptr %x, align 2
     %mul.0 = mul i16 -17, %x.ld.0
-    %x.ld.1 = load i16, i16* %x, align 2
+    %x.ld.1 = load i16, ptr %x, align 2
     %div.0 = sdiv i16 -17, %x.ld.1
-    %x.ld.2 = load i16, i16* %x, align 2
+    %x.ld.2 = load i16, ptr %x, align 2
     %mod.0 = srem i16 -17, %x.ld.2
-    %y.ld.0 = load i16, i16* %y, align 2
+    %y.ld.0 = load i16, ptr %y, align 2
     %mul.1 = mul i16 13, %y.ld.0
-    %y.ld.1 = load i16, i16* %y, align 2
+    %y.ld.1 = load i16, ptr %y, align 2
     %div.1 = udiv i16 13, %y.ld.1
-    %y.ld.2 = load i16, i16* %y, align 2
+    %y.ld.2 = load i16, ptr %y, align 2
     %mod.1 = urem i16 13, %y.ld.2
-    %z.ld.0 = load double, double* %z, align 8
+    %z.ld.0 = load double, ptr %z, align 8
     %fmul.0 = fmul double 9.000000e+00, %z.ld.0
-    %z.ld.1 = load double, double* %z, align 8
+    %z.ld.1 = load double, ptr %z, align 8
     %fdiv.0 = fdiv double 9.000000e+00, %z.ld.1
   )RAW_RESULT");
 
@@ -1011,28 +993,28 @@ TEST_P(BackendExprTests, TestShift) {
   }
 
   DECLARE_EXPECTED_OUTPUT(exp, R"RAW_RESULT(
-    store i64 0, i64* %x, align 8
-    store i64 0, i64* %y, align 8
-    store i64 0, i64* %s, align 8
-    store i32 0, i32* %z, align 4
-    %x.ld.0 = load i64, i64* %x, align 8
-    %s.ld.0 = load i64, i64* %s, align 8
+    store i64 0, ptr %x, align 8
+    store i64 0, ptr %y, align 8
+    store i64 0, ptr %s, align 8
+    store i32 0, ptr %z, align 4
+    %x.ld.0 = load i64, ptr %x, align 8
+    %s.ld.0 = load i64, ptr %s, align 8
     %shl.0 = shl i64 %x.ld.0, %s.ld.0
-    %x.ld.1 = load i64, i64* %x, align 8
-    %s.ld.1 = load i64, i64* %s, align 8
+    %x.ld.1 = load i64, ptr %x, align 8
+    %s.ld.1 = load i64, ptr %s, align 8
     %shr.0 = ashr i64 %x.ld.1, %s.ld.1
-    %y.ld.0 = load i64, i64* %y, align 8
-    %s.ld.2 = load i64, i64* %s, align 8
+    %y.ld.0 = load i64, ptr %y, align 8
+    %s.ld.2 = load i64, ptr %s, align 8
     %shl.1 = shl i64 %y.ld.0, %s.ld.2
-    %y.ld.1 = load i64, i64* %y, align 8
-    %s.ld.3 = load i64, i64* %s, align 8
+    %y.ld.1 = load i64, ptr %y, align 8
+    %s.ld.3 = load i64, ptr %s, align 8
     %shr.1 = lshr i64 %y.ld.1, %s.ld.3
-    %x.ld.2 = load i64, i64* %x, align 8
-    %z.ld.0 = load i32, i32* %z, align 4
+    %x.ld.2 = load i64, ptr %x, align 8
+    %z.ld.0 = load i32, ptr %z, align 4
     %zext.0 = zext i32 %z.ld.0 to i64
     %shl.2 = shl i64 %x.ld.2, %zext.0
-    %z.ld.1 = load i32, i32* %z, align 4
-    %y.ld.2 = load i64, i64* %y, align 8
+    %z.ld.1 = load i32, ptr %z, align 4
+    %y.ld.2 = load i64, ptr %y, align 8
     %trunc.0 = trunc i64 %y.ld.2 to i32
     %shr.2 = lshr i32 %z.ld.1, %trunc.0
   )RAW_RESULT");
@@ -1074,7 +1056,7 @@ TEST_P(BackendExprTests, TestComplexOps) {
   }
 
   DECLARE_EXPECTED_OUTPUT(exp, R"RAW_RESULT(
-    define void @foo(i8* nest %nest.0) #0 {
+  define void @foo(ptr nest %nest.0) #0 {
   entry:
     %tmp.12 = alloca { double, double }, align 8
     %tmp.11 = alloca { double, double }, align 8
@@ -1093,134 +1075,105 @@ TEST_P(BackendExprTests, TestComplexOps) {
     %y = alloca { double, double }, align 8
     %z = alloca { double, double }, align 8
     %b = alloca i8, align 1
-    %cast.0 = bitcast { double, double }* %x to i8*
-    call void @llvm.memcpy.p0i8.p0i8.i64(i8* align 8 %cast.0, i8* align 8 bitcast ({ double, double }* @const.0 to i8*), i64 16, i1 false)
-    %cast.1 = bitcast { double, double }* %y to i8*
-    call void @llvm.memcpy.p0i8.p0i8.i64(i8* align 8 %cast.1, i8* align 8 bitcast ({ double, double }* @const.0 to i8*), i64 16, i1 false)
-    %cast.2 = bitcast { double, double }* %z to i8*
-    call void @llvm.memcpy.p0i8.p0i8.i64(i8* align 8 %cast.2, i8* align 8 bitcast ({ double, double }* @const.0 to i8*), i64 16, i1 false)
-    store i8 0, i8* %b, align 1
-    %cast.3 = bitcast { double, double }* %tmp.0 to i8*
-    %cast.4 = bitcast { double, double }* %x to i8*
-    call void @llvm.memcpy.p0i8.p0i8.i64(i8* align 8 %cast.3, i8* align 8 %cast.4, i64 16, i1 false)
-    %cast.5 = bitcast { double, double }* %tmp.1 to i8*
-    %cast.6 = bitcast { double, double }* %y to i8*
-    call void @llvm.memcpy.p0i8.p0i8.i64(i8* align 8 %cast.5, i8* align 8 %cast.6, i64 16, i1 false)
-    %field.0 = getelementptr inbounds { double, double }, { double, double }* %tmp.0, i32 0, i32 0
-    %.real.ld.0 = load double, double* %field.0, align 8
-    %field.1 = getelementptr inbounds { double, double }, { double, double }* %tmp.1, i32 0, i32 0
-    %.real.ld.1 = load double, double* %field.1, align 8
+    call void @llvm.memcpy.p0.p0.i64(ptr align 8 %x, ptr align 8 @const.0, i64 16, i1 false)
+    call void @llvm.memcpy.p0.p0.i64(ptr align 8 %y, ptr align 8 @const.0, i64 16, i1 false)
+    call void @llvm.memcpy.p0.p0.i64(ptr align 8 %z, ptr align 8 @const.0, i64 16, i1 false)
+    store i8 0, ptr %b, align 1
+    call void @llvm.memcpy.p0.p0.i64(ptr align 8 %tmp.0, ptr align 8 %x, i64 16, i1 false)
+    call void @llvm.memcpy.p0.p0.i64(ptr align 8 %tmp.1, ptr align 8 %y, i64 16, i1 false)
+    %field.0 = getelementptr inbounds { double, double }, ptr %tmp.0, i32 0, i32 0
+    %.real.ld.0 = load double, ptr %field.0, align 8
+    %field.1 = getelementptr inbounds { double, double }, ptr %tmp.1, i32 0, i32 0
+    %.real.ld.1 = load double, ptr %field.1, align 8
     %fadd.0 = fadd double %.real.ld.0, %.real.ld.1
-    %field.2 = getelementptr inbounds { double, double }, { double, double }* %tmp.0, i32 0, i32 1
-    %.imag.ld.0 = load double, double* %field.2, align 8
-    %field.3 = getelementptr inbounds { double, double }, { double, double }* %tmp.1, i32 0, i32 1
-    %.imag.ld.1 = load double, double* %field.3, align 8
+    %field.2 = getelementptr inbounds { double, double }, ptr %tmp.0, i32 0, i32 1
+    %.imag.ld.0 = load double, ptr %field.2, align 8
+    %field.3 = getelementptr inbounds { double, double }, ptr %tmp.1, i32 0, i32 1
+    %.imag.ld.1 = load double, ptr %field.3, align 8
     %fadd.1 = fadd double %.imag.ld.0, %.imag.ld.1
-    %field.4 = getelementptr inbounds { double, double }, { double, double }* %tmp.2, i32 0, i32 0
-    store double %fadd.0, double* %field.4, align 8
-    %field.5 = getelementptr inbounds { double, double }, { double, double }* %tmp.2, i32 0, i32 1
-    store double %fadd.1, double* %field.5, align 8
-    %cast.7 = bitcast { double, double }* %z to i8*
-    %cast.8 = bitcast { double, double }* %tmp.2 to i8*
-    call void @llvm.memcpy.p0i8.p0i8.i64(i8* align 8 %cast.7, i8* align 8 %cast.8, i64 16, i1 false)
-    %cast.9 = bitcast { double, double }* %tmp.3 to i8*
-    %cast.10 = bitcast { double, double }* %x to i8*
-    call void @llvm.memcpy.p0i8.p0i8.i64(i8* align 8 %cast.9, i8* align 8 %cast.10, i64 16, i1 false)
-    %cast.11 = bitcast { double, double }* %tmp.4 to i8*
-    %cast.12 = bitcast { double, double }* %y to i8*
-    call void @llvm.memcpy.p0i8.p0i8.i64(i8* align 8 %cast.11, i8* align 8 %cast.12, i64 16, i1 false)
-    %field.6 = getelementptr inbounds { double, double }, { double, double }* %tmp.3, i32 0, i32 0
-    %.real.ld.2 = load double, double* %field.6, align 8
-    %field.7 = getelementptr inbounds { double, double }, { double, double }* %tmp.4, i32 0, i32 0
-    %.real.ld.3 = load double, double* %field.7, align 8
+    %field.4 = getelementptr inbounds { double, double }, ptr %tmp.2, i32 0, i32 0
+    store double %fadd.0, ptr %field.4, align 8
+    %field.5 = getelementptr inbounds { double, double }, ptr %tmp.2, i32 0, i32 1
+    store double %fadd.1, ptr %field.5, align 8
+    call void @llvm.memcpy.p0.p0.i64(ptr align 8 %z, ptr align 8 %tmp.2, i64 16, i1 false)
+    call void @llvm.memcpy.p0.p0.i64(ptr align 8 %tmp.3, ptr align 8 %x, i64 16, i1 false)
+    call void @llvm.memcpy.p0.p0.i64(ptr align 8 %tmp.4, ptr align 8 %y, i64 16, i1 false)
+    %field.6 = getelementptr inbounds { double, double }, ptr %tmp.3, i32 0, i32 0
+    %.real.ld.2 = load double, ptr %field.6, align 8
+    %field.7 = getelementptr inbounds { double, double }, ptr %tmp.4, i32 0, i32 0
+    %.real.ld.3 = load double, ptr %field.7, align 8
     %fsub.0 = fsub double %.real.ld.2, %.real.ld.3
-    %field.8 = getelementptr inbounds { double, double }, { double, double }* %tmp.3, i32 0, i32 1
-    %.imag.ld.2 = load double, double* %field.8, align 8
-    %field.9 = getelementptr inbounds { double, double }, { double, double }* %tmp.4, i32 0, i32 1
-    %.imag.ld.3 = load double, double* %field.9, align 8
+    %field.8 = getelementptr inbounds { double, double }, ptr %tmp.3, i32 0, i32 1
+    %.imag.ld.2 = load double, ptr %field.8, align 8
+    %field.9 = getelementptr inbounds { double, double }, ptr %tmp.4, i32 0, i32 1
+    %.imag.ld.3 = load double, ptr %field.9, align 8
     %fsub.1 = fsub double %.imag.ld.2, %.imag.ld.3
-    %field.10 = getelementptr inbounds { double, double }, { double, double }* %tmp.5, i32 0, i32 0
-    store double %fsub.0, double* %field.10, align 8
-    %field.11 = getelementptr inbounds { double, double }, { double, double }* %tmp.5, i32 0, i32 1
-    store double %fsub.1, double* %field.11, align 8
-    %cast.13 = bitcast { double, double }* %z to i8*
-    %cast.14 = bitcast { double, double }* %tmp.5 to i8*
-    call void @llvm.memcpy.p0i8.p0i8.i64(i8* align 8 %cast.13, i8* align 8 %cast.14, i64 16, i1 false)
-    %cast.15 = bitcast { double, double }* %tmp.6 to i8*
-    %cast.16 = bitcast { double, double }* %x to i8*
-    call void @llvm.memcpy.p0i8.p0i8.i64(i8* align 8 %cast.15, i8* align 8 %cast.16, i64 16, i1 false)
-    %cast.17 = bitcast { double, double }* %tmp.7 to i8*
-    %cast.18 = bitcast { double, double }* %y to i8*
-    call void @llvm.memcpy.p0i8.p0i8.i64(i8* align 8 %cast.17, i8* align 8 %cast.18, i64 16, i1 false)
-    %field.12 = getelementptr inbounds { double, double }, { double, double }* %tmp.6, i32 0, i32 0
-    %.real.ld.4 = load double, double* %field.12, align 8
-    %field.13 = getelementptr inbounds { double, double }, { double, double }* %tmp.7, i32 0, i32 0
-    %.real.ld.5 = load double, double* %field.13, align 8
+    %field.10 = getelementptr inbounds { double, double }, ptr %tmp.5, i32 0, i32 0
+    store double %fsub.0, ptr %field.10, align 8
+    %field.11 = getelementptr inbounds { double, double }, ptr %tmp.5, i32 0, i32 1
+    store double %fsub.1, ptr %field.11, align 8
+    call void @llvm.memcpy.p0.p0.i64(ptr align 8 %z, ptr align 8 %tmp.5, i64 16, i1 false)
+    call void @llvm.memcpy.p0.p0.i64(ptr align 8 %tmp.6, ptr align 8 %x, i64 16, i1 false)
+    call void @llvm.memcpy.p0.p0.i64(ptr align 8 %tmp.7, ptr align 8 %y, i64 16, i1 false)
+    %field.12 = getelementptr inbounds { double, double }, ptr %tmp.6, i32 0, i32 0
+    %.real.ld.4 = load double, ptr %field.12, align 8
+    %field.13 = getelementptr inbounds { double, double }, ptr %tmp.7, i32 0, i32 0
+    %.real.ld.5 = load double, ptr %field.13, align 8
     %fmul.0 = fmul double %.real.ld.4, %.real.ld.5
-    %field.14 = getelementptr inbounds { double, double }, { double, double }* %tmp.6, i32 0, i32 1
-    %.imag.ld.4 = load double, double* %field.14, align 8
-    %field.15 = getelementptr inbounds { double, double }, { double, double }* %tmp.7, i32 0, i32 1
-    %.imag.ld.5 = load double, double* %field.15, align 8
+    %field.14 = getelementptr inbounds { double, double }, ptr %tmp.6, i32 0, i32 1
+    %.imag.ld.4 = load double, ptr %field.14, align 8
+    %field.15 = getelementptr inbounds { double, double }, ptr %tmp.7, i32 0, i32 1
+    %.imag.ld.5 = load double, ptr %field.15, align 8
     %fmul.1 = fmul double %.imag.ld.4, %.imag.ld.5
     %fsub.2 = fsub double %fmul.0, %fmul.1
-    %field.16 = getelementptr inbounds { double, double }, { double, double }* %tmp.6, i32 0, i32 0
-    %.field.ld.0 = load double, double* %field.16, align 8
-    %field.17 = getelementptr inbounds { double, double }, { double, double }* %tmp.7, i32 0, i32 1
-    %.field.ld.1 = load double, double* %field.17, align 8
+    %field.16 = getelementptr inbounds { double, double }, ptr %tmp.6, i32 0, i32 0
+    %.field.ld.0 = load double, ptr %field.16, align 8
+    %field.17 = getelementptr inbounds { double, double }, ptr %tmp.7, i32 0, i32 1
+    %.field.ld.1 = load double, ptr %field.17, align 8
     %fmul.2 = fmul double %.field.ld.0, %.field.ld.1
-    %field.18 = getelementptr inbounds { double, double }, { double, double }* %tmp.6, i32 0, i32 1
-    %.field.ld.2 = load double, double* %field.18, align 8
-    %field.19 = getelementptr inbounds { double, double }, { double, double }* %tmp.7, i32 0, i32 0
-    %.field.ld.3 = load double, double* %field.19, align 8
+    %field.18 = getelementptr inbounds { double, double }, ptr %tmp.6, i32 0, i32 1
+    %.field.ld.2 = load double, ptr %field.18, align 8
+    %field.19 = getelementptr inbounds { double, double }, ptr %tmp.7, i32 0, i32 0
+    %.field.ld.3 = load double, ptr %field.19, align 8
     %fmul.3 = fmul double %.field.ld.2, %.field.ld.3
     %fadd.2 = fadd double %fmul.2, %fmul.3
-    %field.20 = getelementptr inbounds { double, double }, { double, double }* %tmp.8, i32 0, i32 0
-    store double %fsub.2, double* %field.20, align 8
-    %field.21 = getelementptr inbounds { double, double }, { double, double }* %tmp.8, i32 0, i32 1
-    store double %fadd.2, double* %field.21, align 8
-    %cast.19 = bitcast { double, double }* %z to i8*
-    %cast.20 = bitcast { double, double }* %tmp.8 to i8*
-    call void @llvm.memcpy.p0i8.p0i8.i64(i8* align 8 %cast.19, i8* align 8 %cast.20, i64 16, i1 false)
-    %cast.21 = bitcast { double, double }* %tmp.9 to i8*
-    %cast.22 = bitcast { double, double }* %x to i8*
-    call void @llvm.memcpy.p0i8.p0i8.i64(i8* align 8 %cast.21, i8* align 8 %cast.22, i64 16, i1 false)
-    %cast.23 = bitcast { double, double }* %tmp.10 to i8*
-    %cast.24 = bitcast { double, double }* %y to i8*
-    call void @llvm.memcpy.p0i8.p0i8.i64(i8* align 8 %cast.23, i8* align 8 %cast.24, i64 16, i1 false)
-    %field.22 = getelementptr inbounds { double, double }, { double, double }* %tmp.9, i32 0, i32 0
-    %.real.ld.6 = load double, double* %field.22, align 8
-    %field.23 = getelementptr inbounds { double, double }, { double, double }* %tmp.10, i32 0, i32 0
-    %.real.ld.7 = load double, double* %field.23, align 8
+    %field.20 = getelementptr inbounds { double, double }, ptr %tmp.8, i32 0, i32 0
+    store double %fsub.2, ptr %field.20, align 8
+    %field.21 = getelementptr inbounds { double, double }, ptr %tmp.8, i32 0, i32 1
+    store double %fadd.2, ptr %field.21, align 8
+    call void @llvm.memcpy.p0.p0.i64(ptr align 8 %z, ptr align 8 %tmp.8, i64 16, i1 false)
+    call void @llvm.memcpy.p0.p0.i64(ptr align 8 %tmp.9, ptr align 8 %x, i64 16, i1 false)
+    call void @llvm.memcpy.p0.p0.i64(ptr align 8 %tmp.10, ptr align 8 %y, i64 16, i1 false)
+    %field.22 = getelementptr inbounds { double, double }, ptr %tmp.9, i32 0, i32 0
+    %.real.ld.6 = load double, ptr %field.22, align 8
+    %field.23 = getelementptr inbounds { double, double }, ptr %tmp.10, i32 0, i32 0
+    %.real.ld.7 = load double, ptr %field.23, align 8
     %fcmp.0 = fcmp oeq double %.real.ld.6, %.real.ld.7
     %zext.0 = zext i1 %fcmp.0 to i8
-    %field.24 = getelementptr inbounds { double, double }, { double, double }* %tmp.9, i32 0, i32 1
-    %.imag.ld.6 = load double, double* %field.24, align 8
-    %field.25 = getelementptr inbounds { double, double }, { double, double }* %tmp.10, i32 0, i32 1
-    %.imag.ld.7 = load double, double* %field.25, align 8
+    %field.24 = getelementptr inbounds { double, double }, ptr %tmp.9, i32 0, i32 1
+    %.imag.ld.6 = load double, ptr %field.24, align 8
+    %field.25 = getelementptr inbounds { double, double }, ptr %tmp.10, i32 0, i32 1
+    %.imag.ld.7 = load double, ptr %field.25, align 8
     %fcmp.1 = fcmp oeq double %.imag.ld.6, %.imag.ld.7
     %zext.1 = zext i1 %fcmp.1 to i8
     %iand.0 = and i8 %zext.0, %zext.1
-    store i8 %iand.0, i8* %b, align 1
-    %cast.25 = bitcast { double, double }* %tmp.11 to i8*
-    %cast.26 = bitcast { double, double }* %x to i8*
-    call void @llvm.memcpy.p0i8.p0i8.i64(i8* align 8 %cast.25, i8* align 8 %cast.26, i64 16, i1 false)
-    %cast.27 = bitcast { double, double }* %tmp.12 to i8*
-    %cast.28 = bitcast { double, double }* %y to i8*
-    call void @llvm.memcpy.p0i8.p0i8.i64(i8* align 8 %cast.27, i8* align 8 %cast.28, i64 16, i1 false)
-    %field.26 = getelementptr inbounds { double, double }, { double, double }* %tmp.11, i32 0, i32 0
-    %.real.ld.8 = load double, double* %field.26, align 8
-    %field.27 = getelementptr inbounds { double, double }, { double, double }* %tmp.12, i32 0, i32 0
-    %.real.ld.9 = load double, double* %field.27, align 8
+    store i8 %iand.0, ptr %b, align 1
+    call void @llvm.memcpy.p0.p0.i64(ptr align 8 %tmp.11, ptr align 8 %x, i64 16, i1 false)
+    call void @llvm.memcpy.p0.p0.i64(ptr align 8 %tmp.12, ptr align 8 %y, i64 16, i1 false)
+    %field.26 = getelementptr inbounds { double, double }, ptr %tmp.11, i32 0, i32 0
+    %.real.ld.8 = load double, ptr %field.26, align 8
+    %field.27 = getelementptr inbounds { double, double }, ptr %tmp.12, i32 0, i32 0
+    %.real.ld.9 = load double, ptr %field.27, align 8
     %fcmp.2 = fcmp une double %.real.ld.8, %.real.ld.9
     %zext.2 = zext i1 %fcmp.2 to i8
-    %field.28 = getelementptr inbounds { double, double }, { double, double }* %tmp.11, i32 0, i32 1
-    %.imag.ld.8 = load double, double* %field.28, align 8
-    %field.29 = getelementptr inbounds { double, double }, { double, double }* %tmp.12, i32 0, i32 1
-    %.imag.ld.9 = load double, double* %field.29, align 8
+    %field.28 = getelementptr inbounds { double, double }, ptr %tmp.11, i32 0, i32 1
+    %.imag.ld.8 = load double, ptr %field.28, align 8
+    %field.29 = getelementptr inbounds { double, double }, ptr %tmp.12, i32 0, i32 1
+    %.imag.ld.9 = load double, ptr %field.29, align 8
     %fcmp.3 = fcmp une double %.imag.ld.8, %.imag.ld.9
     %zext.3 = zext i1 %fcmp.3 to i8
     %ior.0 = or i8 %zext.2, %zext.3
-    store i8 %ior.0, i8* %b, align 1
+    store i8 %ior.0, ptr %b, align 1
     ret void
   }
   )RAW_RESULT");
@@ -1266,22 +1219,21 @@ TEST_P(BackendExprTests, TestComplexExpressions) {
   h.mkAssign(xvex3, compex);
 
   DECLARE_EXPECTED_OUTPUT(exp, R"RAW_RESULT(
-    store double 0.000000e+00, double* %a, align 8
-    store double 0.000000e+00, double* %b, align 8
-    %cast.0 = bitcast { double, double }* %x to i8*
-    call addrspace(0) void @llvm.memcpy.p0i8.p0i8.i64(i8* align 8 %cast.0, i8* align 8 bitcast ({ double, double }* @const.0 to i8*), i64 16, i1 false)
-    %field.0 = getelementptr inbounds { double, double }, { double, double }* %x, i32 0, i32 0
-    %x.real.ld.0 = load double, double* %field.0, align 8
-    store double %x.real.ld.0, double* %a, align 8
-    %field.1 = getelementptr inbounds { double, double }, { double, double }* %x, i32 0, i32 1
-    %x.imag.ld.0 = load double, double* %field.1, align 8
-    store double %x.imag.ld.0, double* %b, align 8
-    %b.ld.0 = load double, double* %b, align 8
-    %a.ld.0 = load double, double* %a, align 8
-    %field.2 = getelementptr inbounds { double, double }, { double, double }* %x, i32 0, i32 0
-    store double %b.ld.0, double* %field.2, align 8
-    %field.3 = getelementptr inbounds { double, double }, { double, double }* %x, i32 0, i32 1
-    store double %a.ld.0, double* %field.3, align 8
+    store double 0.000000e+00, ptr %a, align 8
+    store double 0.000000e+00, ptr %b, align 8
+    call addrspace(0) void @llvm.memcpy.p0.p0.i64(ptr align 8 %x, ptr align 8 @const.0, i64 16, i1 false)
+    %field.0 = getelementptr inbounds { double, double }, ptr %x, i32 0, i32 0
+    %x.real.ld.0 = load double, ptr %field.0, align 8
+    store double %x.real.ld.0, ptr %a, align 8
+    %field.1 = getelementptr inbounds { double, double }, ptr %x, i32 0, i32 1
+    %x.imag.ld.0 = load double, ptr %field.1, align 8
+    store double %x.imag.ld.0, ptr %b, align 8
+    %b.ld.0 = load double, ptr %b, align 8
+    %a.ld.0 = load double, ptr %a, align 8
+    %field.2 = getelementptr inbounds { double, double }, ptr %x, i32 0, i32 0
+    store double %b.ld.0, ptr %field.2, align 8
+    %field.3 = getelementptr inbounds { double, double }, ptr %x, i32 0, i32 1
+    store double %a.ld.0, ptr %field.3, align 8
   )RAW_RESULT");
 
   bool isOK = h.expectBlock(exp);
@@ -1299,7 +1251,7 @@ TEST_P(BackendExprTests, CreateStringConstantExpressions) {
   {
     Bexpression *snil = be->string_constant_expression("");
     DECLARE_EXPECTED_OUTPUT(exp, R"RAW_RESULT(
-        i8* null
+        ptr null
       )RAW_RESULT");
     bool isOK = h.expectValue(snil->value(), exp);
     EXPECT_TRUE(isOK && "Value does not have expected contents");
@@ -1308,7 +1260,7 @@ TEST_P(BackendExprTests, CreateStringConstantExpressions) {
   {
     Bexpression *sblah = be->string_constant_expression("blah");
     DECLARE_EXPECTED_OUTPUT(exp, R"RAW_RESULT(
-      i8* getelementptr inbounds ([5 x i8], [5 x i8]* @const.0, i32 0, i32 0)
+      @const.0 = private constant [5 x i8] c"blah\00", align 1
     )RAW_RESULT");
     bool isOK = h.expectValue(sblah->value(), exp);
     EXPECT_TRUE(isOK && "Value does not have expected contents");
@@ -1342,28 +1294,28 @@ TEST_P(BackendExprTests, TestConditionalExpression1) {
   h.mkExprStmt(condex);
 
   DECLARE_EXPECTED_OUTPUT(exp, R"RAW_RESULT(
-    define void @foo(i8* nest %nest.0) #0 {
+  define void @foo(ptr nest %nest.0) #0 {
   entry:
     %a = alloca i64, align 8
     %b = alloca i64, align 8
-    store i64 0, i64* %a, align 8
-    store i64 0, i64* %b, align 8
-    %a.ld.0 = load i64, i64* %a, align 8
-    %b.ld.0 = load i64, i64* %b, align 8
+    store i64 0, ptr %a, align 8
+    store i64 0, ptr %b, align 8
+    %a.ld.0 = load i64, ptr %a, align 8
+    %b.ld.0 = load i64, ptr %b, align 8
     %icmp.0 = icmp slt i64 %a.ld.0, %b.ld.0
     %zext.0 = zext i1 %icmp.0 to i8
     %trunc.0 = trunc i8 %zext.0 to i1
     br i1 %trunc.0, label %then.0, label %else.0
-  
+
   then.0:                                           ; preds = %entry
-    call void @foo(i8* nest undef)
+    call void @foo(ptr nest undef)
     br label %fallthrough.0
-  
+
   fallthrough.0:                                    ; preds = %else.0, %then.0
     ret void
-  
+
   else.0:                                           ; preds = %entry
-    call void @foo(i8* nest undef)
+    call void @foo(ptr nest undef)
     br label %fallthrough.0
   }
   )RAW_RESULT");
@@ -1399,24 +1351,24 @@ TEST_P(BackendExprTests, TestConditionalExpression2) {
   h.mkExprStmt(condex);
 
   DECLARE_EXPECTED_OUTPUT(exp, R"RAW_RESULT(
-    define void @foo(i8* nest %nest.0) #0 {
+  define void @foo(ptr nest %nest.0) #0 {
   entry:
     %a = alloca i64, align 8
     %tmpv.0 = alloca i64, align 8
-    store i64 0, i64* %a, align 8
+    store i64 0, ptr %a, align 8
     br i1 true, label %then.0, label %else.0
-  
+
   then.0:                                           ; preds = %entry
-    call void @foo(i8* nest undef)
+    call void @foo(ptr nest undef)
     br label %fallthrough.0
-  
+
   fallthrough.0:                                    ; preds = %else.0, %then.0
-    %tmpv.0.ld.0 = load i64, i64* %tmpv.0, align 8
+    %tmpv.0.ld.0 = load i64, ptr %tmpv.0, align 8
     ret void
-  
+
   else.0:                                           ; preds = %entry
-    %a.ld.0 = load i64, i64* %a, align 8
-    store i64 %a.ld.0, i64* %tmpv.0, align 8
+    %a.ld.0 = load i64, ptr %a, align 8
+    store i64 %a.ld.0, ptr %tmpv.0, align 8
     br label %fallthrough.0
   }
   )RAW_RESULT");
@@ -1455,35 +1407,30 @@ TEST(BackendExprTests, TestConditionalExpression3Amd64) {
   h.mkLocal("a", s2t, cond);
 
   DECLARE_EXPECTED_OUTPUT(exp, R"RAW_RESULT(
-    define void @foo({ [16 x i32], i32 }* sret({ [16 x i32], i32 }) %sret.formal.0, i8* nest %nest.0, { [16 x i32], i32 }* byval({ [16 x i32], i32 }) %p0, i32 %p1) #0 {
-  entry:
-    %p1.addr = alloca i32, align 4
-    %a = alloca { [16 x i32], i32 }, align 4
-    %tmpv.0 = alloca { [16 x i32], i32 }, align 4
-    store i32 %p1, i32* %p1.addr, align 4
-    %p1.ld.0 = load i32, i32* %p1.addr, align 4
-    %icmp.0 = icmp slt i32 %p1.ld.0, 7
-    %zext.0 = zext i1 %icmp.0 to i8
-    %trunc.0 = trunc i8 %zext.0 to i1
-    br i1 %trunc.0, label %then.0, label %else.0
-  
-  then.0:                                           ; preds = %entry
-    %cast.0 = bitcast { [16 x i32], i32 }* %tmpv.0 to i8*
-    %cast.1 = bitcast { [16 x i32], i32 }* %p0 to i8*
-    call void @llvm.memcpy.p0i8.p0i8.i64(i8* align 4 %cast.0, i8* align 4 %cast.1, i64 68, i1 false)
-    br label %fallthrough.0
-  
-  fallthrough.0:                                    ; preds = %else.0, %then.0
-    %cast.3 = bitcast { [16 x i32], i32 }* %a to i8*
-    %cast.4 = bitcast { [16 x i32], i32 }* %tmpv.0 to i8*
-    call void @llvm.memcpy.p0i8.p0i8.i64(i8* align 4 %cast.3, i8* align 4 %cast.4, i64 68, i1 false)
-    ret void
-  
-  else.0:                                           ; preds = %entry
-    %cast.2 = bitcast { [16 x i32], i32 }* %tmpv.0 to i8*
-    call void @llvm.memcpy.p0i8.p0i8.i64(i8* align 4 %cast.2, i8* align 4 bitcast ({ [16 x i32], i32 }* @const.0 to i8*), i64 68, i1 false)
-    br label %fallthrough.0
-  }
+    define void @foo(ptr sret({ [16 x i32], i32 }) %sret.formal.0, ptr nest %nest.0, ptr byval({ [16 x i32], i32 }) %p0, i32 %p1) #0 {
+    entry:
+      %p1.addr = alloca i32, align 4
+      %a = alloca { [16 x i32], i32 }, align 4
+      %tmpv.0 = alloca { [16 x i32], i32 }, align 4
+      store i32 %p1, ptr %p1.addr, align 4
+      %p1.ld.0 = load i32, ptr %p1.addr, align 4
+      %icmp.0 = icmp slt i32 %p1.ld.0, 7
+      %zext.0 = zext i1 %icmp.0 to i8
+      %trunc.0 = trunc i8 %zext.0 to i1
+      br i1 %trunc.0, label %then.0, label %else.0
+
+    then.0:                                           ; preds = %entry
+      call void @llvm.memcpy.p0.p0.i64(ptr align 4 %tmpv.0, ptr align 4 %p0, i64 68, i1 false)
+      br label %fallthrough.0
+
+    fallthrough.0:                                    ; preds = %else.0, %then.0
+      call void @llvm.memcpy.p0.p0.i64(ptr align 4 %a, ptr align 4 %tmpv.0, i64 68, i1 false)
+      ret void
+
+    else.0:                                           ; preds = %entry
+      call void @llvm.memcpy.p0.p0.i64(ptr align 4 %tmpv.0, ptr align 4 @const.0, i64 68, i1 false)
+      br label %fallthrough.0
+    }
   )RAW_RESULT");
 
   bool broken = h.finish(StripDebugInfo);
@@ -1530,35 +1477,30 @@ TEST(BackendExprTests, TestConditionalExpression3Arm64) {
   h.mkLocal("a", s2t, cond);
 
   DECLARE_EXPECTED_OUTPUT(exp, R"RAW_RESULT(
-    define void @foo({ [16 x i32], i32 }* sret({ [16 x i32], i32 }) %sret.formal.0, i8* nest %nest.0, { [16 x i32], i32 }* %p0, i32 %p1) #0 {
-  entry:
-    %p1.addr = alloca i32, align 4
-    %a = alloca { [16 x i32], i32 }, align 4
-    %tmpv.0 = alloca { [16 x i32], i32 }, align 4
-    store i32 %p1, i32* %p1.addr, align 4
-    %p1.ld.0 = load i32, i32* %p1.addr, align 4
-    %icmp.0 = icmp slt i32 %p1.ld.0, 7
-    %zext.0 = zext i1 %icmp.0 to i8
-    %trunc.0 = trunc i8 %zext.0 to i1
-    br i1 %trunc.0, label %then.0, label %else.0
-  
-  then.0:                                           ; preds = %entry
-    %cast.0 = bitcast { [16 x i32], i32 }* %tmpv.0 to i8*
-    %cast.1 = bitcast { [16 x i32], i32 }* %p0 to i8*
-    call void @llvm.memcpy.p0i8.p0i8.i64(i8* align 4 %cast.0, i8* align 4 %cast.1, i64 68, i1 false)
-    br label %fallthrough.0
-  
-  fallthrough.0:                                    ; preds = %else.0, %then.0
-    %cast.3 = bitcast { [16 x i32], i32 }* %a to i8*
-    %cast.4 = bitcast { [16 x i32], i32 }* %tmpv.0 to i8*
-    call void @llvm.memcpy.p0i8.p0i8.i64(i8* align 4 %cast.3, i8* align 4 %cast.4, i64 68, i1 false)
-    ret void
-  
-  else.0:                                           ; preds = %entry
-    %cast.2 = bitcast { [16 x i32], i32 }* %tmpv.0 to i8*
-    call void @llvm.memcpy.p0i8.p0i8.i64(i8* align 4 %cast.2, i8* align 4 bitcast ({ [16 x i32], i32 }* @const.0 to i8*), i64 68, i1 false)
-    br label %fallthrough.0
-  }
+    define void @foo(ptr sret({ [16 x i32], i32 }) %sret.formal.0, ptr nest %nest.0, ptr %p0, i32 %p1) #0 {
+    entry:
+      %p1.addr = alloca i32, align 4
+      %a = alloca { [16 x i32], i32 }, align 4
+      %tmpv.0 = alloca { [16 x i32], i32 }, align 4
+      store i32 %p1, ptr %p1.addr, align 4
+      %p1.ld.0 = load i32, ptr %p1.addr, align 4
+      %icmp.0 = icmp slt i32 %p1.ld.0, 7
+      %zext.0 = zext i1 %icmp.0 to i8
+      %trunc.0 = trunc i8 %zext.0 to i1
+      br i1 %trunc.0, label %then.0, label %else.0
+
+    then.0:                                           ; preds = %entry
+      call void @llvm.memcpy.p0.p0.i64(ptr align 4 %tmpv.0, ptr align 4 %p0, i64 68, i1 false)
+      br label %fallthrough.0
+
+    fallthrough.0:                                    ; preds = %else.0, %then.0
+      call void @llvm.memcpy.p0.p0.i64(ptr align 4 %a, ptr align 4 %tmpv.0, i64 68, i1 false)
+      ret void
+
+    else.0:                                           ; preds = %entry
+      call void @llvm.memcpy.p0.p0.i64(ptr align 4 %tmpv.0, ptr align 4 @const.0, i64 68, i1 false)
+      br label %fallthrough.0
+    }
   )RAW_RESULT");
 
   bool broken = h.finish(StripDebugInfo);
@@ -1589,18 +1531,18 @@ TEST_P(BackendExprTests, TestCompoundExpression) {
   h.addStmt(es);
 
   DECLARE_EXPECTED_OUTPUT(exp, R"RAW_RESULT(
-    define i64 @foo(i8* nest %nest.0, i32 %param1, i32 %param2, i64* %param3) #0 {
+  define i64 @foo(ptr nest %nest.0, i32 %param1, i32 %param2, ptr %param3) #0 {
   entry:
     %param1.addr = alloca i32, align 4
     %param2.addr = alloca i32, align 4
-    %param3.addr = alloca i64*, align 8
+    %param3.addr = alloca ptr, align 8
     %x = alloca i64, align 8
-    store i32 %param1, i32* %param1.addr, align 4
-    store i32 %param2, i32* %param2.addr, align 4
-    store i64* %param3, i64** %param3.addr, align 8
-    store i64 0, i64* %x, align 8
-    store i64 5, i64* %x, align 8
-    %x.ld.0 = load i64, i64* %x, align 8
+    store i32 %param1, ptr %param1.addr, align 4
+    store i32 %param2, ptr %param2.addr, align 4
+    store ptr %param3, ptr %param3.addr, align 8
+    store i64 0, ptr %x, align 8
+    store i64 5, ptr %x, align 8
+    %x.ld.0 = load i64, ptr %x, align 8
     ret i64 0
   }
   )RAW_RESULT");
@@ -1639,30 +1581,27 @@ TEST_P(BackendExprTests, TestCompoundExpression2) {
   h.addStmt(st2);
 
   DECLARE_EXPECTED_OUTPUT(exp, R"RAW_RESULT(
-    define i64 @foo(i8* nest %nest.0, i32 %param1, i32 %param2, i64* %param3) #0 {
+  define i64 @foo(ptr nest %nest.0, i32 %param1, i32 %param2, ptr %param3) #0 {
   entry:
     %tmp.0 = alloca { i64, i64 }, align 8
     %param1.addr = alloca i32, align 4
     %param2.addr = alloca i32, align 4
-    %param3.addr = alloca i64*, align 8
+    %param3.addr = alloca ptr, align 8
     %x = alloca i64, align 8
     %y = alloca { i64, i64 }, align 8
-    store i32 %param1, i32* %param1.addr, align 4
-    store i32 %param2, i32* %param2.addr, align 4
-    store i64* %param3, i64** %param3.addr, align 8
-    store i64 0, i64* %x, align 8
-    %cast.0 = bitcast { i64, i64 }* %y to i8*
-    call void @llvm.memcpy.p0i8.p0i8.i64(i8* align 8 %cast.0, i8* align 8 bitcast ({ i64, i64 }* @const.0 to i8*), i64 16, i1 false)
-    store i64 5, i64* %x, align 8
-    %x.ld.0 = load i64, i64* %x, align 8
-    %x.ld.1 = load i64, i64* %x, align 8
-    %field.0 = getelementptr inbounds { i64, i64 }, { i64, i64 }* %tmp.0, i32 0, i32 0
-    store i64 %x.ld.0, i64* %field.0, align 8
-    %field.1 = getelementptr inbounds { i64, i64 }, { i64, i64 }* %tmp.0, i32 0, i32 1
-    store i64 %x.ld.1, i64* %field.1, align 8
-    %cast.1 = bitcast { i64, i64 }* %y to i8*
-    %cast.2 = bitcast { i64, i64 }* %tmp.0 to i8*
-    call void @llvm.memcpy.p0i8.p0i8.i64(i8* align 8 %cast.1, i8* align 8 %cast.2, i64 16, i1 false)
+    store i32 %param1, ptr %param1.addr, align 4
+    store i32 %param2, ptr %param2.addr, align 4
+    store ptr %param3, ptr %param3.addr, align 8
+    store i64 0, ptr %x, align 8
+    call void @llvm.memcpy.p0.p0.i64(ptr align 8 %y, ptr align 8 @const.0, i64 16, i1 false)
+    store i64 5, ptr %x, align 8
+    %x.ld.0 = load i64, ptr %x, align 8
+    %x.ld.1 = load i64, ptr %x, align 8
+    %field.0 = getelementptr inbounds { i64, i64 }, ptr %tmp.0, i32 0, i32 0
+    store i64 %x.ld.0, ptr %field.0, align 8
+    %field.1 = getelementptr inbounds { i64, i64 }, ptr %tmp.0, i32 0, i32 1
+    store i64 %x.ld.1, ptr %field.1, align 8
+    call void @llvm.memcpy.p0.p0.i64(ptr align 8 %y, ptr align 8 %tmp.0, i64 16, i1 false)
     ret i64 0
   }
   )RAW_RESULT");
@@ -1701,32 +1640,32 @@ TEST_P(BackendExprTests, TestLhsConditionalExpression) {
   h.mkAssign(dex, mkInt32Const(be, 7));
 
   DECLARE_EXPECTED_OUTPUT(exp, R"RAW_RESULT(
-    define void @foo(i8* nest %nest.0, i32* %p0, i32* %p1) #0 {
+  define void @foo(ptr nest %nest.0, ptr %p0, ptr %p1) #0 {
   entry:
-    %p0.addr = alloca i32*, align 8
-    %p1.addr = alloca i32*, align 8
-    %tmpv.0 = alloca i32*, align 8
-    store i32* %p0, i32** %p0.addr, align 8
-    store i32* %p1, i32** %p1.addr, align 8
-    %p0.ld.0 = load i32*, i32** %p0.addr, align 8
-    %icmp.0 = icmp eq i32* %p0.ld.0, null
+    %p0.addr = alloca ptr, align 8
+    %p1.addr = alloca ptr, align 8
+    %tmpv.0 = alloca ptr, align 8
+    store ptr %p0, ptr %p0.addr, align 8
+    store ptr %p1, ptr %p1.addr, align 8
+    %p0.ld.0 = load ptr, ptr %p0.addr, align 8
+    %icmp.0 = icmp eq ptr %p0.ld.0, null
     %zext.0 = zext i1 %icmp.0 to i8
     %trunc.0 = trunc i8 %zext.0 to i1
     br i1 %trunc.0, label %then.0, label %else.0
-  
+
   then.0:                                           ; preds = %entry
-    %p1.ld.0 = load i32*, i32** %p1.addr, align 8
-    store i32* %p1.ld.0, i32** %tmpv.0, align 8
+    %p1.ld.0 = load ptr, ptr %p1.addr, align 8
+    store ptr %p1.ld.0, ptr %tmpv.0, align 8
     br label %fallthrough.0
-  
+
   fallthrough.0:                                    ; preds = %else.0, %then.0
-    %tmpv.0.ld.0 = load i32*, i32** %tmpv.0, align 8
-    store i32 7, i32* %tmpv.0.ld.0, align 4
+    %tmpv.0.ld.0 = load ptr, ptr %tmpv.0, align 8
+    store i32 7, ptr %tmpv.0.ld.0, align 4
     ret void
-  
+
   else.0:                                           ; preds = %entry
-    %p0.ld.1 = load i32*, i32** %p0.addr, align 8
-    store i32* %p0.ld.1, i32** %tmpv.0, align 8
+    %p0.ld.1 = load ptr, ptr %p0.addr, align 8
+    store ptr %p0.ld.1, ptr %tmpv.0, align 8
     br label %fallthrough.0
   }
   )RAW_RESULT");
@@ -1774,24 +1713,24 @@ TEST_P(BackendExprTests, TestUnaryExpression) {
   h.mkLocal("r", bf64t, be->unary_expression(OPERATOR_MINUS, veq, loc));
 
   DECLARE_EXPECTED_OUTPUT(exp, R"RAW_RESULT(
-    store i8 0, i8* %x, align 1
-    %x.ld.0 = load i8, i8* %x, align 1
+    store i8 0, ptr %x, align 1
+    %x.ld.0 = load i8, ptr %x, align 1
     %icmp.0 = icmp ne i8 %x.ld.0, 0
     %xor.0 = xor i1 %icmp.0, true
     %zext.0 = zext i1 %xor.0 to i8
-    store i8 %zext.0, i8* %y, align 1
-    store i32 0, i32* %a, align 4
-    %a.ld.0 = load i32, i32* %a, align 4
+    store i8 %zext.0, ptr %y, align 1
+    store i32 0, ptr %a, align 4
+    %a.ld.0 = load i32, ptr %a, align 4
     %sub.0 = sub i32 0, %a.ld.0
-    store i32 %sub.0, i32* %b, align 4
-    store i64 0, i64* %z, align 8
-    %z.ld.0 = load i64, i64* %z, align 8
+    store i32 %sub.0, ptr %b, align 4
+    store i64 0, ptr %z, align 8
+    %z.ld.0 = load i64, ptr %z, align 8
     %xor.1 = xor i64 %z.ld.0, -1
-    store i64 %xor.1, i64* %w, align 8
-    store double 0.000000e+00, double* %q, align 8
-    %q.ld.0 = load double, double* %q, align 8
+    store i64 %xor.1, ptr %w, align 8
+    store double 0.000000e+00, ptr %q, align 8
+    %q.ld.0 = load double, ptr %q, align 8
     %fsub.0 = fsub double -0.000000e+00, %q.ld.0
-    store double %fsub.0, double* %r, align 8
+    store double %fsub.0, ptr %r, align 8
   )RAW_RESULT");
 
   bool isOK = h.expectBlock(exp);
@@ -1821,7 +1760,7 @@ TEST_P(BackendExprTests, TestCallArgConversions) {
   h.mkExprStmt(call1);
 
   DECLARE_EXPECTED_OUTPUT(exp, R"RAW_RESULT(
-    call addrspace(0) void @foo(i8* nest undef, i8* null, i32* null, i64* null)
+    call addrspace(0) void @foo(ptr nest undef, ptr null, ptr null, ptr null)
   )RAW_RESULT");
 
   // Note that this
