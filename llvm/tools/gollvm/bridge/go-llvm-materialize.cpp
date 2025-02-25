@@ -1514,6 +1514,17 @@ Bexpression *Llvm_backend::materializeCall(Bexpression *callExpr)
                                     state.llargs, callname);
     if (caller && caller->name() == go_get_gogo()->get_init_fn_name())
       call->addFnAttr(llvm::Attribute::NoInline);
+    if (fnval->getName() == "runtime.mallocgc") {
+      if (auto *needzero =
+              llvm::dyn_cast<llvm::ConstantInt>(call->getArgOperand(3))) {
+        if (needzero->getZExtValue() != 0)
+          call->addFnAttr(makeAllocKindAttr(llvm::AllocFnKind::Alloc,
+                                            llvm::AllocFnKind::Zeroed));
+        else
+          call->addFnAttr(makeAllocKindAttr(llvm::AllocFnKind::Alloc,
+                                            llvm::AllocFnKind::Uninitialized));
+      }
+    }
     genCallAttributes(state, call);
     callValue = (state.sretTemp ? state.sretTemp : call);
   }

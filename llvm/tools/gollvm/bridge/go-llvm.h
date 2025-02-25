@@ -39,6 +39,8 @@
 namespace llvm {
 class Argument;
 class ArrayType;
+class Attribute;
+enum class AllocFnKind : uint64_t;
 class BasicBlock;
 class CallInst;
 class Constant;
@@ -423,6 +425,8 @@ public:
     autoFDO_ = true;
     samplingProfileAccurate_ = accurate;
   }
+
+  llvm::Attribute makeAllocKindAttr(llvm::AllocFnKind v1, llvm::AllocFnKind v2);
 
  private:
   Bexpression *errorExpression() const { return errorExpression_; }

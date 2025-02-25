@@ -25,6 +25,7 @@
 
 #include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/IR/Constants.h"
+#include "llvm/IR/Attributes.h"
 #include "llvm/IR/CFG.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/DerivedTypes.h"
@@ -409,6 +410,13 @@ llvm::Function *Llvm_backend::dummyPersonalityFunction()
   dummyPersonalityFunction_ =
       llvm::Function::Create(pft, plinkage, pfn, module_);
   return dummyPersonalityFunction_;
+}
+
+llvm::Attribute Llvm_backend::makeAllocKindAttr(llvm::AllocFnKind v1,
+                                                llvm::AllocFnKind v2) {
+  return llvm::Attribute::get(context_, llvm::Attribute::AllocKind,
+                              static_cast<uint64_t>(v1) |
+                                  static_cast<uint64_t>(v2));
 }
 
 Bfunction *Llvm_backend::createIntrinsicFcn(const std::string &name,
@@ -2722,6 +2730,13 @@ Bfunction *Llvm_backend::function(Btype *fntype, const std::string &name,
       fcn->addAttributeAtIndex(llvm::AttributeList::ReturnIndex, nonNullAttr);
       fcn->addAttributeAtIndex(llvm::AttributeList::ReturnIndex, noAliasAttr);
     }
+    if (fns == "runtime.newobject" || fns == "runtime.makeslice" ||
+        fns == "runtime.makeslice64")
+      fcn->addFnAttr(makeAllocKindAttr(llvm::AllocFnKind::Alloc,
+                                       llvm::AllocFnKind::Zeroed));
+    if (fns == "runtime.mallocgc")
+      fcn->addFnAttr(makeAllocKindAttr(llvm::AllocFnKind::Alloc,
+                                       llvm::AllocFnKind::Unknown));
 
     // makemap may return its argument, so not noalias.
     if (fns == "runtime.makemap" ||
