@@ -56,7 +56,7 @@ unsigned DrvTestHarness::Perform()
   std::unique_ptr<opt::OptTable> opts =
       gollvm::options::createGollvmDriverOptTable();
   unsigned missingArgIndex, missingArgCount;
-  ArrayRef<const char *> argvv = makeArrayRef(args_);
+  ArrayRef<const char *> argvv(args_);
   opt::InputArgList args =
       opts->ParseArgs(argvv, missingArgIndex, missingArgCount);
 
