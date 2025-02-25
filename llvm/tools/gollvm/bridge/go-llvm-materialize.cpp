@@ -1510,9 +1510,9 @@ Bexpression *Llvm_backend::materializeCall(Bexpression *callExpr)
         llvm::cast<llvm::FunctionType>(calleeFcnTyp->type());
     bool isvoid = llft->getReturnType()->isVoidTy();
     std::string callname(isvoid ? "" : namegen("call"));
-    call = state.builder.CreateCall(llft, fnval,
-                                    state.llargs, callname);
-    if (caller && caller->name() == go_get_gogo()->get_init_fn_name())
+    call = state.builder.CreateCall(llft, fnval, state.llargs, callname);
+    if (go_get_gogo() && caller &&
+        caller->name() == go_get_gogo()->get_init_fn_name())
       call->addFnAttr(llvm::Attribute::NoInline);
     if (fnval->getName() == "runtime.mallocgc") {
       if (auto *needzero =
