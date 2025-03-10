@@ -1525,6 +1525,8 @@ Bexpression *Llvm_backend::materializeCall(Bexpression *callExpr)
                                             llvm::AllocFnKind::Uninitialized));
       }
     }
+    if (fnval->getName() == "runtime.gcWriteBarrier")
+      call->addFnAttr(llvm::Attribute::NoInline);
     genCallAttributes(state, call);
     callValue = (state.sretTemp ? state.sretTemp : call);
   }
