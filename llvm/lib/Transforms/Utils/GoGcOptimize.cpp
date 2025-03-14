@@ -16,7 +16,6 @@
 #include "llvm/Analysis/AliasAnalysis.h"
 #include "llvm/Analysis/CaptureTracking.h"
 #include "llvm/Analysis/LoopInfo.h"
-#include "llvm/Analysis/ScalarEvolution.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Dominators.h"
 #include "llvm/IR/GlobalVariable.h"
@@ -34,6 +33,8 @@
 #include <numeric>
 #include <set>
 
+#define DEBUG_TYPE "gogcoptimize"
+
 using namespace llvm;
 
 namespace {
@@ -41,15 +42,20 @@ namespace {
 class ValueTracker {
 public:
   enum ValueKind { VK_GCPointer, VK_FuncArg };
+  struct SizeAlign {
+    uint64_t Size : 56;
+    uint64_t Align : 8;
+  };
+  typedef SmallVector<int64_t, 4> PtrOffsetInfo;
 
-  typedef SmallVector<int64_t, 2> SCEVCoeffList;
-  typedef SmallVector<SCEVCoeffList, 2> PtrOffsetInfo;
-
-  ValueTracker(Module &Mod) : M(Mod) {}
+  ValueTracker(Module &Mod, FunctionAnalysisManager &FAM) : M(Mod), FAM(FAM) {}
 
   bool trackGCPointer(Value *V);
   void printStats();
-  void setFAM(FunctionAnalysisManager &FAM) { this->FAM = &FAM; }
+  static SizeAlign getGCAllocSizeAlign(CallBase *CB);
+  static bool allocationZeroesMemory(CallBase *CB);
+
+  std::vector<CallBase *> OptimizableGCAllocs;
 
 private:
   struct ValueEscapeInfo {
@@ -68,6 +74,8 @@ private:
       UnsolvableRecursion,
       NonConstOperand,
       NotLoopInvariant,
+      SizeToLarge,
+      SizeUnknown,
       _LastKind
     };
     LeakKind LK;
@@ -77,7 +85,6 @@ private:
   };
 
   bool trackEscape(ValueKind VK, Value *V, const PtrOffsetInfo &POI);
-
   static Value *getGoCallOperand(CallBase *CB, int I);
   static bool getValueAsConstI64(Value *V, int64_t *P);
   static bool isPassthroughInstruction(Value *V);
@@ -85,16 +92,8 @@ private:
   StringRef leakKindName(int K);
 
   void onEscape(ValueKind VK, ValueEscapeInfo::LeakKind LK, Value *V, Value *S,
-                const PtrOffsetInfo *POI) {
-    if (LK != ValueEscapeInfo::GEPOffsetUnknown)
-      return;
-#if 0
-    auto &SE = FAM->getResult<ScalarEvolutionAnalysis>(
-        *cast<Instruction>(S)->getFunction());
-    auto *SCEV = SE.removePointerBase(SE.getSCEV(S));
-    SCEV->dump();
-#endif
-  }
+                const PtrOffsetInfo *POI) {}
+  void onUse(Use *U) {}
 
   bool notEscaped(ValueKind VK, Value *V) {
     return escaped(VK, ValueEscapeInfo::NotLeaked, V, nullptr);
@@ -107,7 +106,6 @@ private:
   bool escaped(ValueKind VK, ValueEscapeInfo::LeakKind LK, Value *V, Value *S,
                const PtrOffsetInfo *POI = nullptr);
 
-  bool getLeakKind(Value *V, ValueEscapeInfo::LeakKind &LK);
   static unsigned getFnArgNo(Function *F, Value *Arg);
   ValueEscapeInfo::LeakKind identifyStoreTarget(Value *Op, PtrOffsetInfo &POI,
                                                 Value **V);
@@ -124,80 +122,45 @@ private:
   bool subtractOffset(unsigned &Dest, unsigned N);
 
   static bool isKnownAllocationFunction(StringRef Name);
-  bool trackReturnValue(Function *F);
-  bool getGEPOffset(Value *GEP, int &Offset);
+  bool getGEPOffset(Value *GEP, int64_t &Offset);
   unsigned getOffsetInAggregate(Type *TyAgg, ArrayRef<unsigned> Indices);
-
-  static void dump(int64_t V) { dbgs() << V; }
-  template <class T> static void dump(const SmallVectorImpl<T> &Vec) {
-    dbgs() << "{";
-    for (unsigned I = 0; I < Vec.size(); ++I) {
-      dump(Vec[I]);
-      if (I < Vec.size() - 1)
-        dbgs() << ",";
-    }
-    dbgs() << "}";
-  }
 
   bool isLoopInvariant(Value *V) {
     if (auto *I = dyn_cast<Instruction>(V)) {
-      LoopInfo &LI = FAM->getResult<LoopAnalysis>(*I->getFunction());
+      LoopInfo &LI = FAM.getResult<LoopAnalysis>(*I->getFunction());
       return !LI.getLoopFor(I->getParent());
     }
     return true;
   }
 
-  unsigned mayLoadPointer(unsigned Offset, unsigned Size,
-                          const PtrOffsetInfo &POI) {
+  bool mayLoadPointer(const PtrOffsetInfo &POI, unsigned Off, unsigned Size) {
+    if (POI.empty())
+      return false;
     unsigned PtrSize = M.getDataLayout().getPointerSize();
-    unsigned Ret = 0;
-    SCEVCoeffList CL = POI.back();
-    CL[0] -= Offset;
-    for (unsigned I = 0; I < Size / PtrSize; ++I) {
-      // Offset += I * PtrSize;
-      // SCEVCoeffList CL = subtractSCEV(POI.back(), {Offset});
-      // assert(CL == CL2);
-      if (CL.size() == 1) {
-        if (CL[0] == 0)
-          Ret |= (1 << I);
-      } else {
-        int GCD = gcd(CL);
-        if (CL[0] % GCD == 0)
-          Ret |= (1 << I);
-      }
-      CL[0] -= PtrSize;
-    }
-    return Ret;
+    if (Size < PtrSize || POI.back() < 0)
+      return false;
+    return Off + Size >= POI.back() + PtrSize && Off <= POI.back();
   }
-
-  SCEVCoeffList subtractSCEV(const SCEVCoeffList &A, const SCEVCoeffList &B) {
-    size_t I;
-    SCEVCoeffList Result;
-    Result.push_back(A[0] - B[0]);
-    for (I = 1; I < A.size(); ++I)
-      Result.push_back(A[I]);
-    for (I = 1; I < B.size(); ++I)
-      Result.push_back(-B[I]);
-    return Result;
-  }
-
-  int gcd(const SCEVCoeffList &CL) {
-    assert(CL.size() > 1);
-    int GCD = std::abs(CL[1]);
-    for (size_t I = 2; I < CL.size(); ++I)
-      GCD = std::gcd(GCD, CL[I]);
-    return GCD;
-  }
-
-  static bool isPowerOf2(unsigned V) { return (V & (V - 1)) == 0; }
 
   Module &M;
+  FunctionAnalysisManager &FAM;
   DenseMap<Value *, ValueEscapeInfo> ValueEscapeMap;  
   DenseMap<std::pair<Value*, PtrOffsetInfo>, SmallVector<ValueEscapeInfo, 4>> ArgEscapeMap;
   DenseMap<Value*, PtrOffsetInfo> ArgMap;
   DenseMap<StringRef, unsigned> CallStats;
-  FunctionAnalysisManager *FAM;
 };
+
+LLVM_ATTRIBUTE_USED raw_ostream &
+operator<<(raw_ostream &OS, const ValueTracker::PtrOffsetInfo &POI) {
+  OS << "{";
+  for (unsigned I = 0; I < POI.size(); ++I) {
+    OS << POI[I];
+    if (I < POI.size() - 1)
+      OS << ",";
+  }
+  OS << "}";
+  return OS;
+}
 
 bool ValueTracker::subtractOffset(unsigned &Dest, unsigned N) {
   if (N > Dest)
@@ -222,22 +185,13 @@ bool ValueTracker::isKnownAllocationFunction(StringRef Name) {
   return false;
 }
 
-bool ValueTracker::getLeakKind(Value *V, ValueEscapeInfo::LeakKind &LK) {  
-  LK = ValueEscapeInfo::Unknown;
-  auto It = ValueEscapeMap.find(V);
-  if (It == ValueEscapeMap.end())
-    return false;
-  LK = It->second.LK;
-  return true;
-}
-
-bool ValueTracker::getGEPOffset(Value *V, int &Offset) {
+bool ValueTracker::getGEPOffset(Value *V, int64_t &Offset) {
   auto *GEP = cast<GEPOperator>(V);
   APInt APOffset(M.getDataLayout().getIndexTypeSizeInBits(GEP->getType()), 0);
   if (!GEP->accumulateConstantOffset(M.getDataLayout(), APOffset))
     return false;
-  Offset = APOffset.getZExtValue();
-  return true;
+  Offset = APOffset.getSExtValue();
+  return Offset >= 0 ? true : false;
 }
 
 unsigned ValueTracker::getOffsetInAggregate(Type *TyAgg,
@@ -254,7 +208,15 @@ bool ValueTracker::trackGCPointer(Value *V) {
   assert(ArgMap.empty());
   CallBase *CB = cast<CallBase>(V);
   CallStats[CB->getCalledFunction()->getName()]++;
-  return trackEscape(VK_GCPointer, V, {});
+  auto SizeAlign = getGCAllocSizeAlign(CB);
+  if (SizeAlign.Size > 1024)
+    return escaped(VK_GCPointer, ValueEscapeInfo::SizeToLarge, V, V, nullptr);
+  else if (SizeAlign.Size == 0 && SizeAlign.Align == 0)
+    return escaped(VK_GCPointer, ValueEscapeInfo::SizeUnknown, V, V, nullptr);
+  bool Escapes = trackEscape(VK_GCPointer, V, {});
+  if (!Escapes)
+    OptimizableGCAllocs.push_back(CB);
+  return Escapes;
 }
 
 void ValueTracker::printStats() {
@@ -284,6 +246,39 @@ void ValueTracker::printStats() {
   }
 }
 
+ValueTracker::SizeAlign ValueTracker::getGCAllocSizeAlign(CallBase *CB) {
+  SizeAlign Ret = {};
+  StringRef Name = CB->getCalledFunction()->getName();
+  GlobalVariable *TypeDesc = nullptr;
+  if (Name == "runtime.mallocgc")
+    TypeDesc = dyn_cast<GlobalVariable>(getGoCallOperand(CB, 1));
+  else if (Name == "runtime.newobject")
+    TypeDesc = dyn_cast<GlobalVariable>(getGoCallOperand(CB, 0));
+  else
+    llvm_unreachable("unknown allocation function");
+  if (TypeDesc == nullptr || !TypeDesc->hasInitializer())
+    return Ret;
+  auto *CS = cast<ConstantStruct>(TypeDesc->getInitializer());
+  if (CS->getOperand(0)->getType()->isStructTy())
+    CS = cast<ConstantStruct>(CS->getOperand(0));
+
+  Ret.Size = cast<ConstantInt>(CS->getOperand(0))->getValue().getZExtValue();
+  Ret.Align = cast<ConstantInt>(CS->getOperand(4))->getValue().getZExtValue();
+  return Ret;
+}
+
+bool ValueTracker::allocationZeroesMemory(CallBase *CB) {
+  StringRef Name = CB->getCalledFunction()->getName();
+  bool Zeroext = false;
+  if (Name == "runtime.mallocgc")
+    Zeroext = cast<ConstantInt>(getGoCallOperand(CB, 2))->isOne();
+  else if (Name == "runtime.newobject")
+    Zeroext = true;
+  else
+    llvm_unreachable("unknown allocation function");
+  return Zeroext;
+}
+
 bool ValueTracker::trackEscape(ValueKind VK, Value *VEscTest,
                                const PtrOffsetInfo &POI) {
   SmallVector<Use *, 16> Worklist;
@@ -291,16 +286,15 @@ bool ValueTracker::trackEscape(ValueKind VK, Value *VEscTest,
   DenseMap<Value *, PtrOffsetInfo> ValueMap;
   auto AddUses = [&](Value *V, const PtrOffsetInfo &POI) {
     auto VIt = ValueMap.find(V);
-    if (VIt != ValueMap.end() && VIt->second != POI) {
-      escaped(VK, ValueEscapeInfo::MultipleOffsets, VEscTest, V, &POI);
-      return false;
-    }
-    for (auto &U : V->uses())
-      if (!Seen.contains(&U)) {
+    if (VIt != ValueMap.end() && VIt->second != POI)
+      return !escaped(VK, ValueEscapeInfo::MultipleOffsets, VEscTest, V, &POI);
+    for (auto &U : V->uses()) {
+      auto P = Seen.insert(&U);
+      if (P.second) {
         ValueMap[V] = POI;
-        Seen.insert(&U);
         Worklist.push_back(&U);
       }
+    }
     return true;
   };
 
@@ -329,16 +323,19 @@ bool ValueTracker::trackEscape(ValueKind VK, Value *VEscTest,
         }
       };
 
+  LLVM_DEBUG(dbgs() << "\n=== VK: " << VK << " (" << VEscTest << "): ");
+  LLVM_DEBUG(VEscTest->dump());
   if (VK == VK_GCPointer)
     if (!isLoopInvariant(VEscTest))
       return escaped(VK, ValueEscapeInfo::NotLoopInvariant, VEscTest, VEscTest,
                      &POI);
 
-  bool Escaped;
-  if (startEscapingAnalysis(VK, VEscTest, POI, Escaped))
-    return Escaped;
+  bool DidEscape;
+  if (startEscapingAnalysis(VK, VEscTest, POI, DidEscape))
+    return DidEscape;
   if (!AddUses(VEscTest, POI))
     return true;
+  unsigned PtrSize = M.getDataLayout().getPointerSize();
 
   while (!Worklist.empty()) {
     Use *U = Worklist.back();
@@ -346,6 +343,12 @@ bool ValueTracker::trackEscape(ValueKind VK, Value *VEscTest,
     PtrOffsetInfo POI = ValueMap[U->get()];
     Worklist.pop_back();
     User *Ref = U->getUser();
+    LLVM_DEBUG(dbgs() << "    Ref (" << Ref << "): POI: " << POI << ":");
+    LLVM_DEBUG(Ref->dump());
+    onUse(U);
+    if (!isLoopInvariant(Ref) && (isa<CallBase>(Ref) || isa<StoreInst>(Ref)))
+      return escaped(VK, ValueEscapeInfo::NotLoopInvariant, VEscTest, Ref,
+                     &POI);
     if (auto *II = dyn_cast<IntrinsicInst>(Ref)) {
       switch (II->getIntrinsicID()) {
       case Intrinsic::memcpy:
@@ -359,14 +362,10 @@ bool ValueTracker::trackEscape(ValueKind VK, Value *VEscTest,
           continue;
         int64_t MemCopySize;
         // If amount to be copied is too small then ignore it
-        if (getValueAsConstI64(II->getOperand(2), &MemCopySize)) {
-          unsigned LoadRes = mayLoadPointer(0, MemCopySize, POI);
-          if (LoadRes == 0)
-            continue;
-          if (!isPowerOf2(LoadRes))
-            return escaped(VK, ValueEscapeInfo::MultipleOffsets, VEscTest, II,
-                           &POI);
-        }
+        if (!getValueAsConstI64(II->getOperand(2), &MemCopySize))
+          MemCopySize = INT64_MAX;
+        if (!mayLoadPointer(POI, 0, MemCopySize))
+          continue;
         if (HandleMemCopy(II->getOperand(0), POI))
           continue;
         return true; // escaped
@@ -429,14 +428,13 @@ bool ValueTracker::trackEscape(ValueKind VK, Value *VEscTest,
           return true; // escaped
         continue;
       }
-      int GepOffset;
+      int64_t GepOffset;
       Value *GepSrc = GEP->getOperand(0);
       assert(ValueMap[GepSrc] == POI);
       if (!getGEPOffset(GEP, GepOffset))
         return escaped(VK, ValueEscapeInfo::GEPOffsetUnknown, VEscTest, GEP,
                        &POI);
-      SCEVCoeffList CL = subtractSCEV(POI.back(), {GepOffset});
-      POI.back() = CL;
+      POI.back() -= GepOffset;
       if (!AddUses(GEP, POI))
         return true; // escaped
 
@@ -447,7 +445,7 @@ bool ValueTracker::trackEscape(ValueKind VK, Value *VEscTest,
         continue;
       if (!SI->getOperand(0)->getType()->isVectorTy())
         // store ptr, dest is equal to memcpy(dest, &ptr, ptr_size)
-        POI.push_back({0});
+        POI.push_back(0);
       if (HandleMemCopy(SI->getOperand(1), POI))
         continue;
       return true;
@@ -456,14 +454,9 @@ bool ValueTracker::trackEscape(ValueKind VK, Value *VEscTest,
       if (POI.empty())
         // loading from object memory is ok
         continue;
-
-      unsigned LdSize = DL.getTypeStoreSize(LI->getType());
-      unsigned LdStatus = mayLoadPointer(0, LdSize, POI);
-      if (LdStatus == 0)
+      int LdSize = DL.getTypeStoreSize(LI->getType());
+      if (!mayLoadPointer(POI, 0, LdSize))
         continue;
-      if (!isPowerOf2(LdStatus))
-        return escaped(VK, ValueEscapeInfo::MultipleOffsets, VEscTest, Ref,
-                       &POI);
       if (!LI->getType()->isVectorTy())
         POI.pop_back();
       if (!AddUses(LI, POI))
@@ -485,7 +478,7 @@ bool ValueTracker::trackEscape(ValueKind VK, Value *VEscTest,
       if (!getValueAsConstI64(IEI->getOperand(2), &N))
         return escaped(VK, ValueEscapeInfo::NonConstOperand, VEscTest, IEI,
                        &POI);
-      POI.push_back({N * 8}); // FIXME
+      POI.push_back(N * 8); // FIXME
       if (!AddUses(IEI, POI))
         return true; // escape
     } else if (auto *EEI = dyn_cast<ExtractElementInst>(Ref)) {
@@ -495,52 +488,33 @@ bool ValueTracker::trackEscape(ValueKind VK, Value *VEscTest,
                        &POI);
       if (!EEI->getType()->isPointerTy())
         continue;
-      unsigned PtrSize = M.getDataLayout().getPointerSize();
-      if (!mayLoadPointer(N * 8, PtrSize, POI))
+      if (!mayLoadPointer(POI, 8 * N, PtrSize))
         continue;
       if (!AddUses(EEI, POI))
         return true; // escaped
     } else if (auto *EVI = dyn_cast<ExtractValueInst>(Ref)) {
       Type *StructTy = EVI->getOperand(0)->getType();
       int64_t Off = getOffsetInAggregate(StructTy, EVI->getIndices());
-      if (POI.back() == SCEVCoeffList{Off}) {
-        POI.pop_back();
-        if (!AddUses(EVI, POI))
-          return true; // escaped
-      }
-    } else if (auto *IVI = dyn_cast<InsertValueInst>(Ref)) {
-      if (U->getOperandNo() == 0)
+      if (!mayLoadPointer(POI, Off, PtrSize))
         continue;
+      assert(POI.back() == Off);
+      POI.pop_back();
+      if (!AddUses(EVI, POI))
+        return true; // escaped
+    } else if (auto *IVI = dyn_cast<InsertValueInst>(Ref)) {
       int64_t Off = getOffsetInAggregate(IVI->getType(), IVI->getIndices());
-      POI.push_back({Off}); // FIXME
+      if (U->getOperandNo() != 0)
+        POI.push_back(Off);
       if (!AddUses(IVI, POI))
         return true; // escaped
     } else if (isPassthroughInstruction(Ref)) {
       if (!AddUses(Ref, POI))
         return true; // escaped
     } else if (!shouldIgnore(Ref)) {
-      return escaped(VK, ValueEscapeInfo::NotHandledInstr, VEscTest, Ref);
+      return escaped(VK, ValueEscapeInfo::NotHandledInstr, VEscTest, Ref, &POI);
     }
   }
   return notEscaped(VK, VEscTest);
-}
-
-bool ValueTracker::trackReturnValue(Function *F) {
-  if (isKnownAllocationFunction(F))
-    return false;
-  if (F->isDeclaration())
-    return true;
-  for (auto &BB : *F) {
-    if (auto *RI = dyn_cast<ReturnInst>(BB.getTerminator())) {
-      if (auto *CB = dyn_cast<CallBase>(RI->getOperand(0))) {
-        if (isKnownAllocationFunction(CB->getCalledFunction()) ||
-            !trackReturnValue(CB->getCalledFunction()))
-          continue;
-      }
-      return true;
-    }
-  }  
-  return false;
 }
 
 Value *ValueTracker::getGoCallOperand(CallBase *CB, int I) {
@@ -563,7 +537,7 @@ ValueTracker::ValueEscapeInfo::LeakKind
 ValueTracker::identifyStoreTarget(Value *Op, PtrOffsetInfo &POI, Value **V) {
   assert(!POI.empty());
   *V = Op;
-  int CurOffset = 0;
+  int64_t CurOffset = 0;
   bool addedIndirection = false;
   auto AddIndirectionIfNeeded = [&]() {
     if (addedIndirection)
@@ -574,14 +548,16 @@ ValueTracker::identifyStoreTarget(Value *Op, PtrOffsetInfo &POI, Value **V) {
     // %gep = getelementptr i8, %tmpv, 8 -> {8}
     // {8} means we can add 8 to value (%tmpv), and then
     // dereference this memory location and get a pointer.
-    POI.back()[0] += CurOffset;
+    POI.back() += CurOffset;
     addedIndirection = true;
     return true;
   };
   while (true) {
+    if (!isLoopInvariant(*V))
+      return ValueEscapeInfo::NotLoopInvariant;
     if (auto *LI = dyn_cast<LoadInst>(*V)) {
       if (!AddIndirectionIfNeeded())
-        POI.push_back({CurOffset});
+        POI.push_back(CurOffset);
       CurOffset = 0;
       *V = LI->getOperand(0);
     } else if (auto *GEP = dyn_cast<GEPOperator>(*V)) {
@@ -606,7 +582,9 @@ ValueTracker::identifyStoreTarget(Value *Op, PtrOffsetInfo &POI, Value **V) {
     Function *F = CB->getCalledFunction();
     if (F == nullptr)
       return ValueEscapeInfo::CallToPtr;
-    else if (trackReturnValue(F))
+    else if (F->isDeclaration())
+      return ValueEscapeInfo::CallToUndef;
+    else if (!isKnownAllocationFunction(F))
       return ValueEscapeInfo::StoreToEscaped;
   }
   return ValueEscapeInfo::NotLeaked;
@@ -664,37 +642,13 @@ StringRef ValueTracker::leakKindName(int K) {
     return "NonConstOperand";
   case ValueEscapeInfo::NotLoopInvariant:
     return "NotLoopInvariant";
+  case ValueEscapeInfo::SizeToLarge:
+    return "SizeToLarge";
+  case ValueEscapeInfo::SizeUnknown:
+    return "SizeUnknown";
   default:
     llvm_unreachable("type is unknown");
   }
-}
-
-bool updateModule(Module &M, ModuleAnalysisManager &MAM) {
-  bool Changed = false;
-  ValueTracker VT(M);
-  for (Function &F : M) {
-    if (F.isDeclaration())
-      continue;
-    // if (F.getName() != "main.main")
-    // continue;
-    FunctionAnalysisManager &FAM =
-        MAM.getResult<FunctionAnalysisManagerModuleProxy>(M).getManager();
-    VT.setFAM(FAM);
-    for (BasicBlock &BB : F) {
-      for (Instruction &I : BB) {
-        if (auto *CI = dyn_cast<CallBase>(&I)) {
-          if (auto *Fn = dyn_cast<Function>(CI->getCalledOperand())) {
-            if (Fn->getName() == "runtime.mallocgc" ||
-                Fn->getName() == "runtime.newobject") {
-              VT.trackGCPointer(CI);
-            }
-          }
-        }
-      }
-    }
-  }
-  VT.printStats();
-  return Changed;
 }
 
 bool ValueTracker::hasArgEscapeInfo(Value* V, const PtrOffsetInfo& POI, bool& Escaped) {  
@@ -750,11 +704,15 @@ void ValueTracker::addArgEscapeInfoIfNeeded(
 bool ValueTracker::escaped(ValueKind VK, ValueEscapeInfo::LeakKind LK, Value *V,
                            Value *S, const PtrOffsetInfo *POI) {
   onEscape(VK, LK, V, S, POI);
+  LLVM_DEBUG(dbgs() << "escape: VK = " << VK << " (" << V << ")"
+                    << " LK: " << leakKindName(LK) << "\n");
+  bool FnArgHasLeaks = false;
   if (VK == VK_FuncArg) {
     auto It = ArgMap.find(V);
     assert(It != ArgMap.end());
     SmallVectorImpl<ValueEscapeInfo> &VEIList = ArgEscapeMap[{V, It->second}];
-    if (LK != ValueEscapeInfo::NotLeaked || VEIList.empty())
+    FnArgHasLeaks = !VEIList.empty();
+    if (LK != ValueEscapeInfo::NotLeaked || !FnArgHasLeaks)
       addArgEscapeInfoIfNeeded(VEIList,
                                {LK, VK, S, POI ? *POI : PtrOffsetInfo()});
     if (LK != ValueEscapeInfo::StoreToArg && LK != ValueEscapeInfo::Returned)
@@ -767,7 +725,80 @@ bool ValueTracker::escaped(ValueKind VK, ValueEscapeInfo::LeakKind LK, Value *V,
   } else {
     ValueEscapeMap[V] = {LK, VK, S, POI ? *POI : PtrOffsetInfo()};
   }
-  return LK != ValueEscapeInfo::NotLeaked;
+  return LK != ValueEscapeInfo::NotLeaked || FnArgHasLeaks;
+}
+
+bool optimizeSingleGCAlloc(CallBase *CB) {
+  Function *F = CB->getFunction();
+  auto SA = ValueTracker::getGCAllocSizeAlign(CB);
+  LLVMContext &C = CB->getContext();
+  auto *TyI8 = Type::getInt8Ty(C);
+  auto *TyI64 = Type::getInt64Ty(C);
+  auto *AllocaSize = ConstantInt::get(TyI64, SA.Size ? SA.Size : 1, false);
+
+  IRBuilder<> IRB(&*F->getEntryBlock().getFirstInsertionPt());
+  auto *AllocaInst = IRB.CreateAlloca(TyI8, AllocaSize, "tmpv.gcopt");
+  AllocaInst->setAlignment(Align(SA.Align));
+  CB->replaceAllUsesWith(AllocaInst);
+  if (SA.Size && ValueTracker::allocationZeroesMemory(CB)) {
+    IRB.SetInsertPoint(F->getEntryBlock().getTerminator());
+    IRB.CreateMemSet(AllocaInst, ConstantInt::get(TyI8, 0), AllocaSize,
+                     MaybeAlign(SA.Align));
+  }
+  // debugging
+  if (Function *FnHook = CB->getModule()->getFunction("gcopt.hook")) {
+    FunctionCallee Callee(FnHook->getFunctionType(), FnHook);
+    IRB.SetInsertPoint(F->getEntryBlock().getTerminator());
+    Value *HookArgs[] = {AllocaInst, AllocaSize};
+    IRB.CreateCall(Callee, HookArgs);
+  }
+  if (auto *II = dyn_cast<InvokeInst>(CB)) {
+    IRB.SetInsertPoint(II->getParent());
+    BasicBlock *UnwindBB = II->getUnwindDest();
+    if (UnwindBB->getSinglePredecessor()) {
+      assert(UnwindBB->getSinglePredecessor() == II->getParent());
+      UnwindBB->eraseFromParent();
+    } else {
+      for (auto &I : *UnwindBB) {
+        if (auto *PHI = dyn_cast<PHINode>(&I))
+          PHI->removeIncomingValue(II->getParent());
+        else
+          break;
+      }
+    }
+
+    BasicBlock *NormBB = II->getNormalDest();
+    IRB.CreateBr(NormBB);
+  }
+  CB->eraseFromParent();
+  return true;
+}
+
+bool updateModule(Module &M, ModuleAnalysisManager &MAM) {
+  bool Changed = false;
+  FunctionAnalysisManager &FAM =
+      MAM.getResult<FunctionAnalysisManagerModuleProxy>(M).getManager();
+  ValueTracker VT(M, FAM);
+  for (Function &F : M) {
+    if (F.isDeclaration())
+      continue;
+    // if (F.getName() != "main.main")
+    //   continue;
+    for (BasicBlock &BB : F)
+      for (Instruction &I : BB)
+        if (auto *CI = dyn_cast<CallBase>(&I))
+          if (auto *Fn = dyn_cast<Function>(CI->getCalledOperand())) {
+            if (Fn->getName() == "runtime.mallocgc" ||
+                Fn->getName() == "runtime.newobject") {
+              VT.trackGCPointer(CI);
+            }
+          }
+  }
+  for (CallBase *CB : VT.OptimizableGCAllocs) {
+    Changed |= optimizeSingleGCAlloc(CB);
+  }
+  VT.printStats();
+  return Changed;
 }
 
 } // end anonymous namespace
@@ -782,9 +813,8 @@ struct llvm::DenseMapInfo<PtrOffsetInfo> {
   }
   static unsigned getHashValue(const PtrOffsetInfo& POI) {
     unsigned Res = 0;
-    for (auto L : POI)
-      for (auto Off : L)
-        Res ^= DenseMapInfo<unsigned>::getHashValue(Off);
+    for (auto Off : POI)
+      Res ^= DenseMapInfo<PtrOffsetInfo::value_type>::getHashValue(Off);
     return Res;
   }
 };
