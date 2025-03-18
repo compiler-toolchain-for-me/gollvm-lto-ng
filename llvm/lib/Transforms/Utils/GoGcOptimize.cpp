@@ -54,6 +54,8 @@ public:
   void printStats();
   static SizeAlign getGCAllocSizeAlign(CallBase *CB);
   static bool allocationZeroesMemory(CallBase *CB);
+  LLVM_ATTRIBUTE_USED static void
+  dumpValueMap(const DenseMap<Value *, PtrOffsetInfo> &ValueMap);
 
   std::vector<CallBase *> OptimizableGCAllocs;
 
@@ -125,22 +127,9 @@ private:
   bool getGEPOffset(Value *GEP, int64_t &Offset);
   unsigned getOffsetInAggregate(Type *TyAgg, ArrayRef<unsigned> Indices);
 
-  bool isLoopInvariant(Value *V) {
-    if (auto *I = dyn_cast<Instruction>(V)) {
-      LoopInfo &LI = FAM.getResult<LoopAnalysis>(*I->getFunction());
-      return !LI.getLoopFor(I->getParent());
-    }
-    return true;
-  }
-
-  bool mayLoadPointer(const PtrOffsetInfo &POI, unsigned Off, unsigned Size) {
-    if (POI.empty())
-      return false;
-    unsigned PtrSize = M.getDataLayout().getPointerSize();
-    if (Size < PtrSize || POI.back() < 0)
-      return false;
-    return Off + Size >= POI.back() + PtrSize && Off <= POI.back();
-  }
+  bool isLoopInvariant(Value *V);
+  bool mayLoadPointer(const PtrOffsetInfo &POI, unsigned Off, unsigned Size);
+  bool mayAliasPointer(Value *Op, int64_t Size, const PtrOffsetInfo &POI);
 
   Module &M;
   FunctionAnalysisManager &FAM;
@@ -357,18 +346,35 @@ bool ValueTracker::trackEscape(ValueKind VK, Value *VEscTest,
           // we're reading or writing contents of our object
           // not copying pointer itself.
           continue;
-        if (U->get() == II->getOperand(0))
-          // We're on the receiving end of memcpy/memmove, ignore
-          continue;
         int64_t MemCopySize;
         // If amount to be copied is too small then ignore it
         if (!getValueAsConstI64(II->getOperand(2), &MemCopySize))
           MemCopySize = INT64_MAX;
+        if (U->get() == II->getOperand(0)) {
+          auto *SrcOp = II->getOperand(1);
+          // We can't be sure about the execution order of IR instructions
+          // in our program, so if we're overwriting a block of memory
+          // containing pointer to our pointer we may create an alias:
+          //
+          // long x = 42;
+          // long* a[2];
+          // long* b[2] = {&x, &x};
+          // memcpy(a, b, sizeof(b)); // both a[0][0] and b[0][0] contain x.
+          if (!ValueMap.contains(SrcOp) &&
+              mayAliasPointer(SrcOp, MemCopySize, POI)) {
+            if (!HandleMemCopy(SrcOp, POI))
+              return true; // escaped
+          }
+
+          // We're on the receiving end of memcpy/memmove,
+          // and aliasing is not detected. Ignore
+          continue;
+        }
         if (!mayLoadPointer(POI, 0, MemCopySize))
           continue;
-        if (HandleMemCopy(II->getOperand(0), POI))
-          continue;
-        return true; // escaped
+        if (!HandleMemCopy(II->getOperand(0), POI))
+          return true; // escaped
+        continue;
       default:
         // We're not interested in other intrinsics
         break;
@@ -415,7 +421,12 @@ bool ValueTracker::trackEscape(ValueKind VK, Value *VEscTest,
               if (!HandleMemCopy(CB->getOperand(OutArgNo), VEI.POI))
                 return true;
             } else {
-              return escaped(VK, VEI.LK, VEscTest, VEI.Val, &POI);
+              // Let the escaped function delete argument info, if we've
+              // been stucked with recursion, we can't handle.
+              auto LK = VEI.LK == ValueEscapeInfo::UnsolvableRecursion
+                            ? ValueEscapeInfo::MultipleOffsets
+                            : VEI.LK;
+              return escaped(VK, LK, VEscTest, VEI.Val, &POI);
             }
           }
         }
@@ -439,16 +450,23 @@ bool ValueTracker::trackEscape(ValueKind VK, Value *VEscTest,
         return true; // escaped
 
     } else if (auto *SI = dyn_cast<StoreInst>(Ref)) {
-      if (U->getOperandNo() == 1)
+      if (U->getOperandNo() == 1) {
+        auto *SrcOp = SI->getOperand(0);
+        if (!ValueMap.contains(SrcOp) && mayAliasPointer(SrcOp, 0, POI)) {
+          if (!SrcOp->getType()->isVectorTy())
+            POI.pop_back();
+          if (!HandleMemCopy(SrcOp, POI))
+            return true; // escaped
+        }
         // any stores to memory addressed by GC pointer or
         // to memory containing GC pointer are ignored
         continue;
+      }
       if (!SI->getOperand(0)->getType()->isVectorTy())
         // store ptr, dest is equal to memcpy(dest, &ptr, ptr_size)
         POI.push_back(0);
-      if (HandleMemCopy(SI->getOperand(1), POI))
-        continue;
-      return true;
+      if (!HandleMemCopy(SI->getOperand(1), POI))
+        return true; // escaped
     } else if (auto *LI = dyn_cast<LoadInst>(Ref)) {
       auto &DL = M.getDataLayout();
       if (POI.empty())
@@ -553,8 +571,6 @@ ValueTracker::identifyStoreTarget(Value *Op, PtrOffsetInfo &POI, Value **V) {
     return true;
   };
   while (true) {
-    if (!isLoopInvariant(*V))
-      return ValueEscapeInfo::NotLoopInvariant;
     if (auto *LI = dyn_cast<LoadInst>(*V)) {
       if (!AddIndirectionIfNeeded())
         POI.push_back(CurOffset);
@@ -564,8 +580,6 @@ ValueTracker::identifyStoreTarget(Value *Op, PtrOffsetInfo &POI, Value **V) {
       if (!getGEPOffset(GEP, CurOffset))
         return ValueEscapeInfo::GEPOffsetUnknown;
       *V = GEP->getOperand(0);
-    } else if (auto *ITP = dyn_cast<IntToPtrInst>(*V)) {
-      *V = ITP->getOperand(0);
     } else {
       break;
     }
@@ -651,6 +665,15 @@ StringRef ValueTracker::leakKindName(int K) {
   }
 }
 
+LLVM_ATTRIBUTE_USED void
+ValueTracker::dumpValueMap(const DenseMap<Value *, PtrOffsetInfo> &ValueMap) {
+  for (auto &P : ValueMap) {
+    dbgs() << P.second << ": ";
+    P.first->print(dbgs());
+    dbgs() << "\n";
+  }
+}
+
 bool ValueTracker::hasArgEscapeInfo(Value* V, const PtrOffsetInfo& POI, bool& Escaped) {  
   Escaped = false;
   auto It = ArgEscapeMap.find({V, POI});
@@ -675,11 +698,13 @@ bool ValueTracker::startEscapingAnalysis(ValueKind VK, Value* V, const PtrOffset
     if (hasArgEscapeInfo(V, POI, Escaped))
       return true;
     auto P = ArgMap.insert({V, POI});
-    if (!P.second)
+    if (!P.second) {
       if (P.first->second != POI) {
         Escaped = true;
         return escaped(VK, ValueEscapeInfo::UnsolvableRecursion, V, V, &POI);
-      }  
+      }
+      return true;
+    }
     ArgEscapeMap[{V, POI}] = {};
   } else {
     ValueEscapeInfo VEI = {ValueEscapeInfo::Unknown, VK, V, {}};
@@ -715,7 +740,8 @@ bool ValueTracker::escaped(ValueKind VK, ValueEscapeInfo::LeakKind LK, Value *V,
     if (LK != ValueEscapeInfo::NotLeaked || !FnArgHasLeaks)
       addArgEscapeInfoIfNeeded(VEIList,
                                {LK, VK, S, POI ? *POI : PtrOffsetInfo()});
-    if (LK != ValueEscapeInfo::StoreToArg && LK != ValueEscapeInfo::Returned)
+    if (LK != ValueEscapeInfo::StoreToArg && LK != ValueEscapeInfo::Returned &&
+        LK != ValueEscapeInfo::UnsolvableRecursion)
       ArgMap.erase(It);
     else
       // We don't cancel argument escape analysis with StoreToArg,
@@ -726,6 +752,35 @@ bool ValueTracker::escaped(ValueKind VK, ValueEscapeInfo::LeakKind LK, Value *V,
     ValueEscapeMap[V] = {LK, VK, S, POI ? *POI : PtrOffsetInfo()};
   }
   return LK != ValueEscapeInfo::NotLeaked || FnArgHasLeaks;
+}
+
+bool ValueTracker::isLoopInvariant(Value *V) {
+  if (auto *I = dyn_cast<Instruction>(V)) {
+    LoopInfo &LI = FAM.getResult<LoopAnalysis>(*I->getFunction());
+    return !LI.getLoopFor(I->getParent());
+  }
+  return true;
+}
+
+bool ValueTracker::mayLoadPointer(const PtrOffsetInfo &POI, unsigned Off,
+                                  unsigned Size) {
+  if (POI.empty())
+    return false;
+  unsigned PtrSize = M.getDataLayout().getPointerSize();
+  if (Size < PtrSize || POI.back() < 0)
+    return false;
+  return Off + Size >= POI.back() + PtrSize && Off <= POI.back();
+}
+
+bool ValueTracker::mayAliasPointer(Value *Op, int64_t Size,
+                                   const PtrOffsetInfo &POI) {
+  if (isa<ConstantPointerNull>(Op))
+    return false;
+  auto &DL = M.getDataLayout();
+  if (POI.size() < 2 || POI.back() < 0)
+    return false;
+  Size = (Size == 0) ? DL.getTypeStoreSize(Op->getType()) : Size;
+  return Size >= POI.back() + DL.getPointerSize();
 }
 
 bool optimizeSingleGCAlloc(CallBase *CB) {
