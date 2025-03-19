@@ -52,10 +52,10 @@ public:
 
   bool trackGCPointer(Value *V);
   void printStats();
-  static SizeAlign getGCAllocSizeAlign(CallBase *CB);
+  static SizeAlign getGoTypeSizeAlign(Value *TypeDesc);
+  static SizeAlign getGoTypeSizeAlignFromCall(CallBase *CB);
+  static Value *getGoCallOperand(CallBase *CB, int I);
   static bool allocationZeroesMemory(CallBase *CB);
-  LLVM_ATTRIBUTE_USED static void
-  dumpValueMap(const DenseMap<Value *, PtrOffsetInfo> &ValueMap);
 
   std::vector<CallBase *> OptimizableGCAllocs;
 
@@ -86,8 +86,9 @@ private:
     PtrOffsetInfo POI;
   };
 
+  LLVM_ATTRIBUTE_USED static void
+  dumpValueMap(const DenseMap<Value *, PtrOffsetInfo> &ValueMap);
   bool trackEscape(ValueKind VK, Value *V, const PtrOffsetInfo &POI);
-  static Value *getGoCallOperand(CallBase *CB, int I);
   static bool getValueAsConstI64(Value *V, int64_t *P);
   static bool isPassthroughInstruction(Value *V);
   static bool shouldIgnore(Value *V);
@@ -197,7 +198,7 @@ bool ValueTracker::trackGCPointer(Value *V) {
   assert(ArgMap.empty());
   CallBase *CB = cast<CallBase>(V);
   CallStats[CB->getCalledFunction()->getName()]++;
-  auto SizeAlign = getGCAllocSizeAlign(CB);
+  auto SizeAlign = getGoTypeSizeAlignFromCall(CB);
   if (SizeAlign.Size > 1024)
     return escaped(VK_GCPointer, ValueEscapeInfo::SizeToLarge, V, V, nullptr);
   else if (SizeAlign.Size == 0 && SizeAlign.Align == 0)
@@ -235,25 +236,30 @@ void ValueTracker::printStats() {
   }
 }
 
-ValueTracker::SizeAlign ValueTracker::getGCAllocSizeAlign(CallBase *CB) {
+ValueTracker::SizeAlign ValueTracker::getGoTypeSizeAlign(Value *TypeDesc) {
   SizeAlign Ret = {};
-  StringRef Name = CB->getCalledFunction()->getName();
-  GlobalVariable *TypeDesc = nullptr;
-  if (Name == "runtime.mallocgc")
-    TypeDesc = dyn_cast<GlobalVariable>(getGoCallOperand(CB, 1));
-  else if (Name == "runtime.newobject")
-    TypeDesc = dyn_cast<GlobalVariable>(getGoCallOperand(CB, 0));
-  else
-    llvm_unreachable("unknown allocation function");
-  if (TypeDesc == nullptr || !TypeDesc->hasInitializer())
+  auto *GV = dyn_cast_or_null<GlobalVariable>(TypeDesc);
+  if (GV == nullptr || !GV->hasInitializer())
     return Ret;
-  auto *CS = cast<ConstantStruct>(TypeDesc->getInitializer());
+  auto *CS = cast<ConstantStruct>(GV->getInitializer());
   if (CS->getOperand(0)->getType()->isStructTy())
     CS = cast<ConstantStruct>(CS->getOperand(0));
 
   Ret.Size = cast<ConstantInt>(CS->getOperand(0))->getValue().getZExtValue();
   Ret.Align = cast<ConstantInt>(CS->getOperand(4))->getValue().getZExtValue();
   return Ret;
+}
+
+ValueTracker::SizeAlign ValueTracker::getGoTypeSizeAlignFromCall(CallBase *CB) {
+  StringRef Name = CB->getCalledFunction()->getName();
+  Value *TypeDesc = nullptr;
+  if (Name == "runtime.mallocgc")
+    TypeDesc = getGoCallOperand(CB, 1);
+  else if (Name == "runtime.newobject" || Name == "runtime.typedmemmove")
+    TypeDesc = getGoCallOperand(CB, 0);
+  else
+    llvm_unreachable("unknown allocation function");
+  return getGoTypeSizeAlign(TypeDesc);
 }
 
 bool ValueTracker::allocationZeroesMemory(CallBase *CB) {
@@ -274,6 +280,8 @@ bool ValueTracker::trackEscape(ValueKind VK, Value *VEscTest,
   DenseSet<Use *> Seen;
   DenseMap<Value *, PtrOffsetInfo> ValueMap;
   auto AddUses = [&](Value *V, const PtrOffsetInfo &POI) {
+    if (isa<ConstantPointerNull>(V))
+      return true;
     auto VIt = ValueMap.find(V);
     if (VIt != ValueMap.end() && VIt->second != POI)
       return !escaped(VK, ValueEscapeInfo::MultipleOffsets, VEscTest, V, &POI);
@@ -314,10 +322,6 @@ bool ValueTracker::trackEscape(ValueKind VK, Value *VEscTest,
 
   LLVM_DEBUG(dbgs() << "\n=== VK: " << VK << " (" << VEscTest << "): ");
   LLVM_DEBUG(VEscTest->dump());
-  if (VK == VK_GCPointer)
-    if (!isLoopInvariant(VEscTest))
-      return escaped(VK, ValueEscapeInfo::NotLoopInvariant, VEscTest, VEscTest,
-                     &POI);
 
   bool DidEscape;
   if (startEscapingAnalysis(VK, VEscTest, POI, DidEscape))
@@ -783,9 +787,66 @@ bool ValueTracker::mayAliasPointer(Value *Op, int64_t Size,
   return Size >= POI.back() + DL.getPointerSize();
 }
 
-bool optimizeSingleGCAlloc(CallBase *CB) {
+struct GCOptimizeStats {
+  unsigned NConvertedMemMoves;
+  unsigned NRemovedGCWB;
+};
+
+void handleInvoke(IRBuilderBase &IRB, Instruction *I) {
+  auto *II = dyn_cast<InvokeInst>(I);
+  if (II == nullptr)
+    return;
+  IRB.SetInsertPoint(II->getParent());
+  BasicBlock *UnwindBB = II->getUnwindDest();
+  if (UnwindBB->getSinglePredecessor()) {
+    assert(UnwindBB->getSinglePredecessor() == II->getParent());
+    UnwindBB->eraseFromParent();
+  } else {
+    for (auto &I : *UnwindBB) {
+      if (auto *PHI = dyn_cast<PHINode>(&I))
+        PHI->removeIncomingValue(II->getParent());
+      else
+        break;
+    }
+  }
+  BasicBlock *NormBB = II->getNormalDest();
+  IRB.CreateBr(NormBB);
+}
+
+void removeUnneededFunctionCalls(IRBuilderBase &IRB, AllocaInst *GCStackAlloc,
+                                 GCOptimizeStats *GCOS) {
+  auto Align = GCStackAlloc->getAlign();
+  auto *Size = GCStackAlloc->getOperand(0);
+  std::vector<Instruction *> ToRemove;
+  for (auto &U : GCStackAlloc->uses()) {
+    if (auto *Call = dyn_cast<CallBase>(U.getUser())) {
+      Function *F = Call->getCalledFunction();
+      if (F == nullptr)
+        continue;
+      if (F->getName() == "runtime.typedmemmove") {
+        if (U.getOperandNo() == Call->getNumOperands() - 1)
+          continue;
+        IRB.SetInsertPoint(Call);
+        Value *Src = ValueTracker::getGoCallOperand(Call, 2);
+        auto *MemCpy = IRB.CreateMemCpy(U.get(), Align, Src, Align, Size);
+        Call->replaceAllUsesWith(MemCpy);
+        ToRemove.push_back(Call);
+        GCOS->NConvertedMemMoves++;
+      } else if (F->getName() == "runtime.gcWriteBarrier") {
+        ToRemove.push_back(Call);
+        GCOS->NRemovedGCWB++;
+      }
+    }
+  }
+  for (auto *I : ToRemove) {
+    handleInvoke(IRB, I);
+    I->eraseFromParent();
+  }
+}
+
+bool optimizeSingleGCAlloc(CallBase *CB, GCOptimizeStats *GCOS) {
   Function *F = CB->getFunction();
-  auto SA = ValueTracker::getGCAllocSizeAlign(CB);
+  auto SA = ValueTracker::getGoTypeSizeAlignFromCall(CB);
   LLVMContext &C = CB->getContext();
   auto *TyI8 = Type::getInt8Ty(C);
   auto *TyI64 = Type::getInt64Ty(C);
@@ -807,24 +868,8 @@ bool optimizeSingleGCAlloc(CallBase *CB) {
     Value *HookArgs[] = {AllocaInst, AllocaSize};
     IRB.CreateCall(Callee, HookArgs);
   }
-  if (auto *II = dyn_cast<InvokeInst>(CB)) {
-    IRB.SetInsertPoint(II->getParent());
-    BasicBlock *UnwindBB = II->getUnwindDest();
-    if (UnwindBB->getSinglePredecessor()) {
-      assert(UnwindBB->getSinglePredecessor() == II->getParent());
-      UnwindBB->eraseFromParent();
-    } else {
-      for (auto &I : *UnwindBB) {
-        if (auto *PHI = dyn_cast<PHINode>(&I))
-          PHI->removeIncomingValue(II->getParent());
-        else
-          break;
-      }
-    }
-
-    BasicBlock *NormBB = II->getNormalDest();
-    IRB.CreateBr(NormBB);
-  }
+  handleInvoke(IRB, CB);
+  removeUnneededFunctionCalls(IRB, AllocaInst, GCOS);
   CB->eraseFromParent();
   return true;
 }
@@ -849,10 +894,19 @@ bool updateModule(Module &M, ModuleAnalysisManager &MAM) {
             }
           }
   }
+  GCOptimizeStats GCOS = {};
   for (CallBase *CB : VT.OptimizableGCAllocs) {
-    Changed |= optimizeSingleGCAlloc(CB);
+    Changed |= optimizeSingleGCAlloc(CB, &GCOS);
   }
   VT.printStats();
+  dbgs() << "\nGC OPTIMIZATION STATS:\n";
+  dbgs() << "Number of optimized GC allocations: "
+         << VT.OptimizableGCAllocs.size() << "\n";
+  dbgs() << "Number of converted runtime.typedmemmove calls: "
+         << GCOS.NConvertedMemMoves << "\n";
+  dbgs() << "Number of removed runtime.gcWriteBarrier calls: "
+         << GCOS.NRemovedGCWB << "\n";
+
   return Changed;
 }
 
