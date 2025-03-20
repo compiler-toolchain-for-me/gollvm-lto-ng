@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/Transforms/Utils/GoGcOptimize.h"
+#include "llvm/ADT/Statistic.h"
 #include "llvm/Analysis/AliasAnalysis.h"
 #include "llvm/Analysis/CaptureTracking.h"
 #include "llvm/Analysis/LoopInfo.h"
@@ -38,10 +39,37 @@
 using namespace llvm;
 
 namespace {
+STATISTIC(NumOfAllocs, "Number of GC allocations found");
+STATISTIC(NumOfCallsToNewObject, "Number of calls to runtime.newobject");
+STATISTIC(NumOfCallsToMallocGC, "Number of calls to runtime.mallocgc");
+STATISTIC(NumRemovedGCWB, "Number of removed calls to runtime.gcWriteBarrier");
+STATISTIC(NumConvertedMemMoves,
+          "Number of calls to runtime.typedmemmove converted to memcpy");
+STATISTIC(NumOptimizableGCAllocs,
+          "Number of GC allocations possible to optimize");
+
+#define DEFINE_GC_LEAK(a, b)                                                   \
+  llvm::Statistic NumGcObj##a = {DEBUG_TYPE "/VK_GcObject", "NumGcObj" #a, b};
+#include "GoGcLeakKind.def"
+
+#define DEFINE_GC_LEAK(a, b)                                                   \
+  llvm::Statistic NumFArg##a = {DEBUG_TYPE "/VK_FuncArg", "NumFArg" #a, b};
+#include "GoGcLeakKind.def"
+
+Statistic *GcObjectStats[] = {
+#define DEFINE_GC_LEAK(a, b) &NumGcObj##a,
+#include "GoGcLeakKind.def"
+    nullptr};
+
+Statistic *GcFArgStats[] = {
+#define DEFINE_GC_LEAK(a, b) &NumFArg##a,
+#include "GoGcLeakKind.def"
+    nullptr};
+
 ////////////////////////////////////////////////////////////////////
 class ValueTracker {
 public:
-  enum ValueKind { VK_GCPointer, VK_FuncArg };
+  enum ValueKind { VK_GCPointer, VK_FuncArg, _VK_Last };
   struct SizeAlign {
     uint64_t Size : 56;
     uint64_t Align : 8;
@@ -51,7 +79,7 @@ public:
   ValueTracker(Module &Mod, FunctionAnalysisManager &FAM) : M(Mod), FAM(FAM) {}
 
   bool trackGCPointer(Value *V);
-  void printStats();
+  void updateStats();
   static SizeAlign getGoTypeSizeAlign(Value *TypeDesc);
   static SizeAlign getGoTypeSizeAlignFromCall(CallBase *CB);
   static Value *getGoCallOperand(CallBase *CB, int I);
@@ -62,22 +90,8 @@ public:
 private:
   struct ValueEscapeInfo {
     enum LeakKind : uint32_t {
-      NotLeaked,
-      Unknown,
-      StoreToGlobal,
-      StoreToArg,
-      StoreToEscaped,
-      NotHandledInstr,
-      GEPOffsetUnknown,
-      CallToUndef,
-      Returned,
-      MultipleOffsets,
-      CallToPtr,
-      UnsolvableRecursion,
-      NonConstOperand,
-      NotLoopInvariant,
-      SizeToLarge,
-      SizeUnknown,
+#define DEFINE_GC_LEAK(a, b) a,
+#include "GoGcLeakKind.def"
       _LastKind
     };
     LeakKind LK;
@@ -137,7 +151,6 @@ private:
   DenseMap<Value *, ValueEscapeInfo> ValueEscapeMap;  
   DenseMap<std::pair<Value*, PtrOffsetInfo>, SmallVector<ValueEscapeInfo, 4>> ArgEscapeMap;
   DenseMap<Value*, PtrOffsetInfo> ArgMap;
-  DenseMap<StringRef, unsigned> CallStats;
 };
 
 LLVM_ATTRIBUTE_USED raw_ostream &
@@ -167,12 +180,7 @@ unsigned ValueTracker::getFnArgNo(Function *F, Value *Arg) {
 }
 
 bool ValueTracker::isKnownAllocationFunction(StringRef Name) {
-  static const char *Names[] = {"runtime.mallocgc", "runtime.newobject",
-                                "runtime.makeslice"};
-  for (unsigned I = 0; I < sizeof(Names) / sizeof(Names[0]); ++I)
-    if (Name == Names[I])
-      return true;
-  return false;
+  return Name == "runtime.mallocgc" || Name == "runtime.newobject";
 }
 
 bool ValueTracker::getGEPOffset(Value *V, int64_t &Offset) {
@@ -197,7 +205,14 @@ unsigned ValueTracker::getOffsetInAggregate(Type *TyAgg,
 bool ValueTracker::trackGCPointer(Value *V) {
   assert(ArgMap.empty());
   CallBase *CB = cast<CallBase>(V);
-  CallStats[CB->getCalledFunction()->getName()]++;
+  NumOfAllocs++;
+  StringRef Name = CB->getCalledFunction()->getName();
+  if (Name == "runtime.newobject")
+    NumOfCallsToNewObject++;
+  else if (Name == "runtime.mallocgc")
+    NumOfCallsToMallocGC++;
+  else
+    llvm_unreachable("unsupported GC alloc type");
   auto SizeAlign = getGoTypeSizeAlignFromCall(CB);
   if (SizeAlign.Size > 1024)
     return escaped(VK_GCPointer, ValueEscapeInfo::SizeToLarge, V, V, nullptr);
@@ -209,31 +224,13 @@ bool ValueTracker::trackGCPointer(Value *V) {
   return Escapes;
 }
 
-void ValueTracker::printStats() {
-  SmallVector<unsigned, 16> GCCounts(ValueEscapeInfo::_LastKind);
-  SmallVector<unsigned, 16> FACounts(ValueEscapeInfo::_LastKind);
-  dbgs() << "GC CALLS PROCESSED:\n";
-  for (auto &P : CallStats)
-    dbgs() << P.first << ": " << P.second << "\n";
-  dbgs() << "\n";
-  unsigned GCTotal = 0;
-  for (auto &P : ValueEscapeMap) {
-    GCCounts[P.second.LK]++;
-    GCTotal++;
-  }
-  dbgs() << "GC OBJECT STATS, TOTAL: " << GCTotal << ":\n";
-  for (unsigned I = 0; I < GCCounts.size(); ++I) {
-    dbgs() << leakKindName(I) << " : " << GCCounts[I] << "\n";
-  }
-  dbgs() << "\n";
-  for (auto &P : ArgEscapeMap) {
+void ValueTracker::updateStats() {
+  NumOptimizableGCAllocs = OptimizableGCAllocs.size();
+  for (auto &P : ValueEscapeMap)
+    (*GcObjectStats[P.second.LK])++;
+  for (auto &P : ArgEscapeMap)
     for (auto &VEI : P.second)
-      FACounts[VEI.LK]++;
-  }
-  dbgs() << "FUNC ARG STATS:\n";
-  for (unsigned I = 0; I < FACounts.size(); ++I) {
-    dbgs() << leakKindName(I) << " : " << FACounts[I] << "\n";
-  }
+      (*GcFArgStats[VEI.LK])++;
 }
 
 ValueTracker::SizeAlign ValueTracker::getGoTypeSizeAlign(Value *TypeDesc) {
@@ -632,38 +629,10 @@ bool ValueTracker::shouldIgnore(Value *V) {
 
 StringRef ValueTracker::leakKindName(int K) {
   switch (K) {
-  case ValueEscapeInfo::NotLeaked:
-    return "NotLeaked";
-  case ValueEscapeInfo::Unknown:
-    return "Unknown";
-  case ValueEscapeInfo::StoreToGlobal:
-    return "StoreToGlobal";
-  case ValueEscapeInfo::StoreToArg:
-    return "StoreToArg";
-  case ValueEscapeInfo::StoreToEscaped:
-    return "StoreToEscaped";
-  case ValueEscapeInfo::NotHandledInstr:
-    return "NotHandledInstr";
-  case ValueEscapeInfo::GEPOffsetUnknown:
-    return "GEPOffsetUnknown";
-  case ValueEscapeInfo::CallToUndef:
-    return "CallToUndef";
-  case ValueEscapeInfo::Returned:
-    return "Returned";
-  case ValueEscapeInfo::MultipleOffsets:
-    return "MultipleOffsets";
-  case ValueEscapeInfo::CallToPtr:
-    return "CallToPtr";
-  case ValueEscapeInfo::UnsolvableRecursion:
-    return "UnsolvableRecursion";
-  case ValueEscapeInfo::NonConstOperand:
-    return "NonConstOperand";
-  case ValueEscapeInfo::NotLoopInvariant:
-    return "NotLoopInvariant";
-  case ValueEscapeInfo::SizeToLarge:
-    return "SizeToLarge";
-  case ValueEscapeInfo::SizeUnknown:
-    return "SizeUnknown";
+#define DEFINE_GC_LEAK(a, b)                                                   \
+  case ValueEscapeInfo::a:                                                     \
+    return #a;
+#include "GoGcLeakKind.def"
   default:
     llvm_unreachable("type is unknown");
   }
@@ -787,11 +756,6 @@ bool ValueTracker::mayAliasPointer(Value *Op, int64_t Size,
   return Size >= POI.back() + DL.getPointerSize();
 }
 
-struct GCOptimizeStats {
-  unsigned NConvertedMemMoves;
-  unsigned NRemovedGCWB;
-};
-
 void handleInvoke(IRBuilderBase &IRB, Instruction *I) {
   auto *II = dyn_cast<InvokeInst>(I);
   if (II == nullptr)
@@ -813,8 +777,7 @@ void handleInvoke(IRBuilderBase &IRB, Instruction *I) {
   IRB.CreateBr(NormBB);
 }
 
-void removeUnneededFunctionCalls(IRBuilderBase &IRB, AllocaInst *GCStackAlloc,
-                                 GCOptimizeStats *GCOS) {
+void removeUnneededFunctionCalls(IRBuilderBase &IRB, AllocaInst *GCStackAlloc) {
   auto Align = GCStackAlloc->getAlign();
   auto *Size = GCStackAlloc->getOperand(0);
   std::vector<Instruction *> ToRemove;
@@ -831,10 +794,10 @@ void removeUnneededFunctionCalls(IRBuilderBase &IRB, AllocaInst *GCStackAlloc,
         auto *MemCpy = IRB.CreateMemCpy(U.get(), Align, Src, Align, Size);
         Call->replaceAllUsesWith(MemCpy);
         ToRemove.push_back(Call);
-        GCOS->NConvertedMemMoves++;
+        NumConvertedMemMoves++;
       } else if (F->getName() == "runtime.gcWriteBarrier") {
         ToRemove.push_back(Call);
-        GCOS->NRemovedGCWB++;
+        NumRemovedGCWB++;
       }
     }
   }
@@ -844,7 +807,7 @@ void removeUnneededFunctionCalls(IRBuilderBase &IRB, AllocaInst *GCStackAlloc,
   }
 }
 
-bool optimizeSingleGCAlloc(CallBase *CB, GCOptimizeStats *GCOS) {
+bool optimizeSingleGCAlloc(CallBase *CB) {
   Function *F = CB->getFunction();
   auto SA = ValueTracker::getGoTypeSizeAlignFromCall(CB);
   LLVMContext &C = CB->getContext();
@@ -869,7 +832,7 @@ bool optimizeSingleGCAlloc(CallBase *CB, GCOptimizeStats *GCOS) {
     IRB.CreateCall(Callee, HookArgs);
   }
   handleInvoke(IRB, CB);
-  removeUnneededFunctionCalls(IRB, AllocaInst, GCOS);
+  removeUnneededFunctionCalls(IRB, AllocaInst);
   CB->eraseFromParent();
   return true;
 }
@@ -894,19 +857,9 @@ bool updateModule(Module &M, ModuleAnalysisManager &MAM) {
             }
           }
   }
-  GCOptimizeStats GCOS = {};
-  for (CallBase *CB : VT.OptimizableGCAllocs) {
-    Changed |= optimizeSingleGCAlloc(CB, &GCOS);
-  }
-  VT.printStats();
-  dbgs() << "\nGC OPTIMIZATION STATS:\n";
-  dbgs() << "Number of optimized GC allocations: "
-         << VT.OptimizableGCAllocs.size() << "\n";
-  dbgs() << "Number of converted runtime.typedmemmove calls: "
-         << GCOS.NConvertedMemMoves << "\n";
-  dbgs() << "Number of removed runtime.gcWriteBarrier calls: "
-         << GCOS.NRemovedGCWB << "\n";
-
+  for (CallBase *CB : VT.OptimizableGCAllocs)
+    Changed |= optimizeSingleGCAlloc(CB);
+  VT.updateStats();
   return Changed;
 }
 

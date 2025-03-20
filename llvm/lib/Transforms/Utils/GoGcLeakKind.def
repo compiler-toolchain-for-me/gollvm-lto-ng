@@ -1,0 +1,20 @@
+DEFINE_GC_LEAK(NotLeaked, "Object does not escape")
+DEFINE_GC_LEAK(Unknown, "Object state is unknown")
+DEFINE_GC_LEAK(StoreToGlobal, "Object pointer is stored to global variable")
+DEFINE_GC_LEAK(StoreToArg, "Object pointer is stored to function argument")
+DEFINE_GC_LEAK(StoreToEscaped, "Object pointer is stored to escaped object memory")
+DEFINE_GC_LEAK(NotHandledInstr, "Instruction is not handled by analysis")
+DEFINE_GC_LEAK(GEPOffsetUnknown, "GetElementPtr offset is not constant")
+DEFINE_GC_LEAK(CallToUndef, "Object pointer is passed to undefined function")
+DEFINE_GC_LEAK(Returned, "Object pointer is returned from function")
+DEFINE_GC_LEAK(MultipleOffsets, "Instruction references multiple copies of an object pointer")
+DEFINE_GC_LEAK(CallToPtr, "Object pointer is passed to an indirect call")
+DEFINE_GC_LEAK(UnsolvableRecursion, "Detected recursion we can not statically analyze")
+DEFINE_GC_LEAK(NonConstOperand, "Field number in InsertElement/ExtractElement is not constant")
+DEFINE_GC_LEAK(NotLoopInvariant, "Store/call is not loop invariant")
+DEFINE_GC_LEAK(SizeToLarge, "Object size is too large to save on stack")
+DEFINE_GC_LEAK(SizeUnknown, "Object size can not be deteced")
+
+#if defined(DEFINE_GC_LEAK)
+#undef DEFINE_GC_LEAK
+#endif
