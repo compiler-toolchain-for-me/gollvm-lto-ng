@@ -388,6 +388,9 @@ bool Linker::constructCommand(Compilation &compilation,
     if (ltotype.lower() == "thin")
       cmdArgs.push_back(
           args.MakeArgString(llvm::StringRef("--plugin-opt=thinlto")));
+    else if (args.hasArg(gollvm::options::OPT_fexperimental_optimize_gc_allocs))
+      cmdArgs.push_back(args.MakeArgString(
+          llvm::StringRef("--plugin-opt=gollvm-optimize-gc-allocs")));
 
     bool merge_fn = compilation.driver().reconcileOptionPair(
         gollvm::options::OPT_fmerge_functions,

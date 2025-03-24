@@ -227,6 +227,9 @@ namespace options {
   // When true, MergeFunctions pass is used in LTO link pipeline.
   static bool merge_functions = false;
 
+  // Use experimental gollvm GC allocation optimizer (full LTO only)
+  static bool gollvm_optimize_gc_allocs = false;
+
   // Time trace options.
   static std::string time_trace_file;
   static unsigned time_trace_granularity = 500;
@@ -297,6 +300,8 @@ namespace options {
       cs_pgo_gen = true;
     } else if (opt == "merge-functions") {
       merge_functions = true;
+    } else if (opt == "gollvm-optimize-gc-allocs") {
+      gollvm_optimize_gc_allocs = true;
     } else if (opt.consume_front("cs-profile-path=")) {
       cs_profile_path = std::string(opt);
     } else if (opt == "new-pass-manager") {
@@ -905,6 +910,7 @@ static std::unique_ptr<LTO> createLTO(IndexWriteCallback OnIndexWrite,
   Conf.PTO.MergeFunctions = options::merge_functions;
   Conf.PTO.UnifiedLTO = options::unifiedlto;
   Conf.AlwaysEmitRegularLTOObj = !options::obj_path.empty();
+  Conf.GoLLVMOptimizeGCAllocs = options::gollvm_optimize_gc_allocs;
 
   if (options::thinlto_index_only) {
     std::string OldPrefix, NewPrefix;

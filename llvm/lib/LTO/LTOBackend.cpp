@@ -43,8 +43,11 @@
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/TargetParser/SubtargetFeature.h"
 #include "llvm/Transforms/IPO/WholeProgramDevirt.h"
+#include "llvm/Transforms/InstCombine/InstCombine.h"
 #include "llvm/Transforms/Scalar/LoopPassManager.h"
+#include "llvm/Transforms/Scalar/SimplifyCFG.h"
 #include "llvm/Transforms/Utils/FunctionImportUtils.h"
+#include "llvm/Transforms/Utils/GoGcOptimize.h"
 #include "llvm/Transforms/Utils/SplitModule.h"
 #include <optional>
 
@@ -338,6 +341,17 @@ static void runNewPMPasses(const Config &Conf, Module &Mod, TargetMachine *TM,
     MPM.addPass(PB.buildThinLTODefaultPipeline(OL, ImportSummary));
   } else {
     MPM.addPass(PB.buildLTODefaultPipeline(OL, ExportSummary));
+    if (Conf.GoLLVMOptimizeGCAllocs) {
+      FunctionPassManager LateFPM;
+      MPM.addPass(GoGcOptimizePass());
+      LateFPM.addPass(SimplifyCFGPass(SimplifyCFGOptions()
+                                          .convertSwitchRangeToICmp(true)
+                                          .hoistCommonInsts(true)
+                                          .speculateUnpredictables(true)));
+      LateFPM.addPass(
+          InstCombinePass(InstCombineOptions().setVerifyFixpoint(false)));
+      MPM.addPass(createModuleToFunctionPassAdaptor(std::move(LateFPM)));
+    }
   }
 
   if (!Conf.DisableVerify)

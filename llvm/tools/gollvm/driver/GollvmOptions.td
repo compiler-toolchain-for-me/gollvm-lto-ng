@@ -518,6 +518,10 @@ def flto : Flag<["-"], "flto">,
   Group<f_Group>,
   Alias<flto_EQ>, AliasArgs<["full"]>, HelpText<"Enable LTO in 'full' mode">;
 
+def fexperimental_optimize_gc_allocs : Flag<["-"], "fexperimental-optimize-gc-allocs">,
+  Group<f_Group>,
+  HelpText<"Optimize GC allocations in full LTO mode (experimental)">;
+
 // Currently unsupported or not-yet-supported.
 def fuse_linker_plugin : Flag<["-"], "fuse-linker-plugin">,
     Flags<[Ignored]>, HelpText<"This option is not yet supported">;
