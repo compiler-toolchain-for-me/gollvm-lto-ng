@@ -49,11 +49,11 @@ STATISTIC(NumOptimizableGCAllocs,
           "Number of GC allocations possible to optimize");
 
 #define DEFINE_GC_LEAK(a, b)                                                   \
-  llvm::Statistic NumGcObj##a = {DEBUG_TYPE "/VK_GcObject", "NumGcObj" #a, b};
+  llvm::Statistic NumGcObj##a = {DEBUG_TYPE ".VK_GcObject", "NumGcObj" #a, b};
 #include "GoGcLeakKind.def"
 
 #define DEFINE_GC_LEAK(a, b)                                                   \
-  llvm::Statistic NumFArg##a = {DEBUG_TYPE "/VK_FuncArg", "NumFArg" #a, b};
+  llvm::Statistic NumFArg##a = {DEBUG_TYPE ".VK_FuncArg", "NumFArg" #a, b};
 #include "GoGcLeakKind.def"
 
 Statistic *GcObjectStats[] = {
