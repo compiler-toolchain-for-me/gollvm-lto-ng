@@ -277,7 +277,7 @@ bool ValueTracker::trackEscape(ValueKind VK, Value *VEscTest,
   DenseSet<Use *> Seen;
   DenseMap<Value *, PtrOffsetInfo> ValueMap;
   auto AddUses = [&](Value *V, const PtrOffsetInfo &POI) {
-    if (isa<ConstantPointerNull>(V))
+    if (isa<Constant>(V))
       return true;
     auto VIt = ValueMap.find(V);
     if (VIt != ValueMap.end() && VIt->second != POI)
@@ -747,7 +747,7 @@ bool ValueTracker::mayLoadPointer(const PtrOffsetInfo &POI, unsigned Off,
 
 bool ValueTracker::mayAliasPointer(Value *Op, int64_t Size,
                                    const PtrOffsetInfo &POI) {
-  if (isa<ConstantPointerNull>(Op))
+  if (isa<Constant>(Op))
     return false;
   auto &DL = M.getDataLayout();
   if (POI.size() < 2 || POI.back() < 0)
