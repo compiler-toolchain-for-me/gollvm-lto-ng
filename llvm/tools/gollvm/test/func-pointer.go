@@ -9,7 +9,7 @@
 
 // RUN: llvm-dis %t-out.0.5.precodegen.bc -o - | FileCheck %s --check-prefix=LTO
 
-// NOLTO:      define void @main.main(ptr nest nocapture readnone %nest.0) {{.*}} {
+// NOLTO:      define void @main.main(ptr nest {{.*}} %nest.0) {{.*}} {
 // NOLTO-NEXT: entry:
 // NOLTO-NEXT:     #dbg_value
 // NOLTO-NEXT:     #dbg_value
@@ -22,7 +22,7 @@
 // NOLTO-NEXT:   %deref.ld.0 = load ptr, ptr %go_0foobar.Foo..f.go_0foobar.Bar..f, align 8, !dbg
 // NOLTO-NEXT:   call void %deref.ld.0(ptr nest nonnull %go_0foobar.Foo..f.go_0foobar.Bar..f, i64 %.), !dbg
 
-// LTO:      define dso_local void @main.main(ptr nest nocapture readnone %nest.0) {{.*}} {
+// LTO:      define dso_local void @main.main(ptr nest {{.*}} %nest.0) {{.*}} {
 // LTO-NEXT: entry:
 // LTO-NEXT:   #dbg_value
 // LTO-NEXT:   #dbg_value

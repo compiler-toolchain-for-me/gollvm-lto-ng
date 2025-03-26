@@ -87,17 +87,17 @@ Llvm_backend::Llvm_backend(llvm::LLVMContext &context,
     ownModule_.reset(new llvm::Module("gomodule", context));
     switch (cconv) {
       case gollvm::driver::CallingConvId::X86_64_SysV:
-        ownModule_->setTargetTriple("x86_64-unknown-linux-gnu");
+        ownModule_->setTargetTriple(llvm::Triple("x86_64-unknown-linux-gnu"));
         ownModule_->setDataLayout("e-m:e-i64:64-f80:128-n8:16:32:64-S128");
         triple_ = llvm::Triple("x86_64-unknown-linux-gnu");
         break;
       case gollvm::driver::CallingConvId::ARM_AAPCS:
-        ownModule_->setTargetTriple("aarch64-unknown-linux-gnu");
+        ownModule_->setTargetTriple(llvm::Triple("aarch64-unknown-linux-gnu"));
         ownModule_->setDataLayout("e-m:e-i8:8:32-i16:16:32-i64:64-i128:128-n32:64-S128");
         triple_ = llvm::Triple("aarch64-unknown-linux-gnu");
         break;
       case gollvm::driver::CallingConvId::RISCV64_C:
-        ownModule_->setTargetTriple("riscv64-unknown-linux-gnu");
+        ownModule_->setTargetTriple(llvm::Triple("riscv64-unknown-linux-gnu"));
         ownModule_->setDataLayout("e-m:e-p:64:64-i64:64-i128:128-n64-S128");
         triple_ = llvm::Triple("riscv64-unknown-linux-gnu");
         break;

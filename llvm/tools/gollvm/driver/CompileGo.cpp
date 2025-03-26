@@ -558,7 +558,7 @@ bool CompileGoImpl::initBridge()
   module_.reset(new llvm::Module("gomodule", context_));
 
   // Add the target data from the target machine, if it exists
-  module_->setTargetTriple(triple_.getTriple());
+  module_->setTargetTriple(triple_);
 
   // Data layout.
   std::string dlstr = target_->createDataLayout().getStringRepresentation();

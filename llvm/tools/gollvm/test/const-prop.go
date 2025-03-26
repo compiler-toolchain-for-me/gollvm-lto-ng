@@ -6,9 +6,9 @@
 // RUN: llvm-dis %t-out.0.5.precodegen.bc -o - | FileCheck %s
 
 // Check constant propagation from main to PrintNums
-// CHECK:      define dso_local void @main.main(ptr nest nocapture readnone %nest.0) {{.*}} {
+// CHECK:      define dso_local void @main.main(ptr nest {{.*}} %nest.0) {{.*}} {
 // CHECK-NEXT: entry:
-// CHECK-NEXT:   call fastcc void @go_0longfun.PrintNums(), !dbg !50
+// CHECK-NEXT:   call fastcc void @go_0longfun.PrintNums(), !dbg
 
 // CHECK:      define internal fastcc void @go_0longfun.PrintNums() {{.*}} {
 // CHECK-NEXT: entry:

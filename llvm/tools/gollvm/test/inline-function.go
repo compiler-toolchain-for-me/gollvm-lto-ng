@@ -6,7 +6,7 @@
 // RUN: llvm-dis %t-out.0.5.precodegen.bc -o - | FileCheck %s
 
 // Check that PrintNums function has been inlined.
-// CHECK:      define dso_local void @main.main(ptr nest nocapture readnone %nest.0) {{.*}} {
+// CHECK:      define dso_local void @main.main(ptr nest {{.*}} %nest.0) {{.*}} {
 // CHECK-NEXT: entry:
 // CHECK-NEXT:     #dbg_value
 // CHECK-NEXT:   call void @runtime.printlock(ptr nest undef), !dbg

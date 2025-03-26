@@ -3,7 +3,7 @@
 // RUN: llvm-dis %t.lto.bc -o - | FileCheck %s
 
 // All calls in init function must have debug info for LTO to work properly
-// CHECK:      define void @__go_init_main(ptr nest nocapture readnone {{.*}}) {{.*}} {
+// CHECK:      define void @__go_init_main(ptr nest {{.*}}) {{.*}} {
 // CHECK-NEXT: entry:
 // CHECK-NEXT:   call void @runtime.registerTypeDescriptors(ptr nest undef, i64 11, ptr nonnull @go..typelists), !dbg
 // CHECK-NEXT:   call void @internal_1cpu..import(ptr nest undef) #[[ID:[0-9]+]], !dbg

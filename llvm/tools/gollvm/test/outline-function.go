@@ -22,7 +22,7 @@
 package main
 
 import (
-	"math/rand"
+	"../tools/gollvm/libgo/math/rand"
 	"outline"
 )
 

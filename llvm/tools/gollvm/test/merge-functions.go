@@ -6,7 +6,7 @@
 
 // RUN: llvm-dis %t-out.0.5.precodegen.bc -o - | FileCheck %s
 
-// CHECK:      define dso_local void @main.main(ptr nest nocapture readnone %nest.1) {{.*}} {
+// CHECK:      define dso_local void @main.main(ptr nest {{.*}} %nest.1) {{.*}} {
 // CHECK-NEXT: entry:
 // CHECK-NEXT:   call fastcc void @go_0foo.Foo(), !dbg
 // CHECK-NEXT:   call fastcc void @go_0foo.Foo(), !dbg
