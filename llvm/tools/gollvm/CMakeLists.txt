@@ -99,6 +99,11 @@ externalproject_add(libmpc
 # Top level targets for building, installing
 add_custom_target(gollvm ALL)
 add_custom_target(install-gollvm)
+if (GOLLVM_LTO_SUPPORT)
+  add_dependencies(install-gollvm install-LLVMgold)
+  add_dependencies(install-gollvm install-llvm-ar)
+  add_dependencies(install-gollvm install-llvm-ranlib)
+endif()
 
 # In most use cases, we want to force a rebuild of all objects built
 # from Go source if the compiler changes.
