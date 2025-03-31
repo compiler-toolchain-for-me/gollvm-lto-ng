@@ -66,6 +66,16 @@ Statistic *GcFArgStats[] = {
 #include "GoGcLeakKind.def"
     nullptr};
 
+static cl::opt<std::string>
+    GCOptOnlyIn("gcopt-only-in", cl::init(""),
+                cl::desc("The comma separated list of functions for GC "
+                         "optimizer to operate in"));
+
+static cl::opt<std::string> GCOptNotIn(
+    "gcopt-not-in", cl::init(""),
+    cl::desc(
+        "The comma separated list of functions which shouldn't be optimized"));
+
 ////////////////////////////////////////////////////////////////////
 class ValueTracker {
 public:
@@ -824,17 +834,20 @@ bool optimizeSingleGCAlloc(CallBase *CB) {
     IRB.CreateMemSet(AllocaInst, ConstantInt::get(TyI8, 0), AllocaSize,
                      MaybeAlign(SA.Align));
   }
-  // debugging
-  if (Function *FnHook = CB->getModule()->getFunction("gcopt.hook")) {
-    FunctionCallee Callee(FnHook->getFunctionType(), FnHook);
-    IRB.SetInsertPoint(F->getEntryBlock().getTerminator());
-    Value *HookArgs[] = {AllocaInst, AllocaSize};
-    IRB.CreateCall(Callee, HookArgs);
-  }
   handleInvoke(IRB, CB);
   removeUnneededFunctionCalls(IRB, AllocaInst);
   CB->eraseFromParent();
   return true;
+}
+
+void getIdentifierList(const std::string &Option,
+                       SmallVectorImpl<StringRef> &Result) {
+  StringRef FuncList(Option);
+  while (!FuncList.empty()) {
+    auto P = FuncList.split(',');
+    Result.push_back(P.first);
+    FuncList = P.second;
+  }
 }
 
 bool updateModule(Module &M, ModuleAnalysisManager &MAM) {
@@ -842,11 +855,20 @@ bool updateModule(Module &M, ModuleAnalysisManager &MAM) {
   FunctionAnalysisManager &FAM =
       MAM.getResult<FunctionAnalysisManagerModuleProxy>(M).getManager();
   ValueTracker VT(M, FAM);
+  SmallVector<StringRef, 1> OptOnlyIn;
+  SmallVector<StringRef, 1> OptNotIn;
+  getIdentifierList(GCOptOnlyIn, OptOnlyIn);
+  getIdentifierList(GCOptNotIn, OptNotIn);
   for (Function &F : M) {
     if (F.isDeclaration())
       continue;
-    // if (F.getName() != "main.main")
-    //   continue;
+    if (llvm::any_of(OptNotIn,
+                     [&F](StringRef Name) { return F.getName() == Name; }))
+      continue;
+    if (!OptOnlyIn.empty() && !llvm::any_of(OptOnlyIn, [&F](StringRef Name) {
+          return F.getName() == Name;
+        }))
+      continue;
     for (BasicBlock &BB : F)
       for (Instruction &I : BB)
         if (auto *CI = dyn_cast<CallBase>(&I))
