@@ -830,7 +830,7 @@ bool optimizeSingleGCAlloc(CallBase *CB) {
   AllocaInst->setAlignment(Align(SA.Align));
   CB->replaceAllUsesWith(AllocaInst);
   if (SA.Size && ValueTracker::allocationZeroesMemory(CB)) {
-    IRB.SetInsertPoint(F->getEntryBlock().getTerminator());
+    IRB.SetInsertPointPastAllocas(F);
     IRB.CreateMemSet(AllocaInst, ConstantInt::get(TyI8, 0), AllocaSize,
                      MaybeAlign(SA.Align));
   }
