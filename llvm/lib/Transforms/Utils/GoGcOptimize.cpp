@@ -512,7 +512,7 @@ bool ValueTracker::trackEscape(ValueKind VK, Value *VEscTest,
         return true; // escape
     } else if (auto *EEI = dyn_cast<ExtractElementInst>(Ref)) {
       int64_t N;
-      if (!getValueAsConstI64(EEI->getOperand(2), &N))
+      if (!getValueAsConstI64(EEI->getOperand(1), &N))
         return escaped(VK, ValueEscapeInfo::NonConstOperand, VEscTest, EEI,
                        &POI);
       if (!EEI->getType()->isPointerTy())
@@ -684,7 +684,7 @@ bool ValueTracker::startEscapingAnalysis(ValueKind VK, Value* V, const PtrOffset
     if (!P.second) {
       if (P.first->second != POI) {
         Escaped = true;
-        return escaped(VK, ValueEscapeInfo::UnsolvableRecursion, V, V, &POI);
+        escaped(VK, ValueEscapeInfo::UnsolvableRecursion, V, V, &POI);
       }
       return true;
     }
