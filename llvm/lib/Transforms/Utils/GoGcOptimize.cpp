@@ -313,6 +313,8 @@ bool ValueTracker::trackEscape(ValueKind VK, Value *VEscTest,
         if ((LK = identifyStoreTarget(STV, POI, &V)) ==
             ValueEscapeInfo::NotLeaked) {
           if (auto *PHI = dyn_cast<PHINode>(V)) {
+            if (!ValueMap.insert({PHI, POI}).second)
+              return true;
             for (auto &IV : PHI->incoming_values())
               if (!HandleMemCopy(IV.get(), POI))
                 return false;
