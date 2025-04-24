@@ -344,12 +344,12 @@ static void runNewPMPasses(const Config &Conf, Module &Mod, TargetMachine *TM,
     if (Conf.GoLLVMOptimizeGCAllocs) {
       FunctionPassManager LateFPM;
       MPM.addPass(GoGcOptimizePass());
+      LateFPM.addPass(
+          InstCombinePass(InstCombineOptions().setVerifyFixpoint(false)));
       LateFPM.addPass(SimplifyCFGPass(SimplifyCFGOptions()
                                           .convertSwitchRangeToICmp(true)
                                           .hoistCommonInsts(true)
                                           .speculateUnpredictables(true)));
-      LateFPM.addPass(
-          InstCombinePass(InstCombineOptions().setVerifyFixpoint(false)));
       MPM.addPass(createModuleToFunctionPassAdaptor(std::move(LateFPM)));
     }
   }
