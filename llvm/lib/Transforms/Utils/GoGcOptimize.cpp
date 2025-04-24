@@ -260,13 +260,25 @@ ValueTracker::SizeAlign ValueTracker::getGoTypeSizeAlign(Value *TypeDesc) {
 ValueTracker::SizeAlign ValueTracker::getGoTypeSizeAlignFromCall(CallBase *CB) {
   StringRef Name = CB->getCalledFunction()->getName();
   Value *TypeDesc = nullptr;
-  if (Name == "runtime.mallocgc")
+  uint64_t UserSize = 0;
+  if (Name == "runtime.mallocgc") {
+    ConstantInt *Size = dyn_cast<ConstantInt>(getGoCallOperand(CB, 0));
+    if (!Size)
+      return {};
+    UserSize = Size->getValue().getZExtValue();
     TypeDesc = getGoCallOperand(CB, 1);
-  else if (Name == "runtime.newobject" || Name == "runtime.typedmemmove")
+  } else if (Name == "runtime.newobject" || Name == "runtime.typedmemmove") {
     TypeDesc = getGoCallOperand(CB, 0);
-  else
+  } else {
     llvm_unreachable("unknown allocation function");
-  return getGoTypeSizeAlign(TypeDesc);
+  }
+  auto SA = getGoTypeSizeAlign(TypeDesc);
+  if (UserSize) {
+    SA.Size = UserSize;
+    if (!SA.Align)
+      SA.Align = 1;
+  }
+  return SA;
 }
 
 bool ValueTracker::allocationZeroesMemory(CallBase *CB) {
