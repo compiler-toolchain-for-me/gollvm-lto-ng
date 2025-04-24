@@ -820,6 +820,9 @@ void removeUnneededFunctionCalls(IRBuilderBase &IRB, AllocaInst *GCStackAlloc) {
         ToRemove.push_back(Call);
         NumConvertedMemMoves++;
       } else if (F->getName() == "runtime.gcWriteBarrier") {
+        IRB.SetInsertPoint(Call);
+        IRB.CreateStore(ValueTracker::getGoCallOperand(Call, 1),
+                        ValueTracker::getGoCallOperand(Call, 0));
         ToRemove.push_back(Call);
         NumRemovedGCWB++;
       }
