@@ -91,7 +91,7 @@ if(NOT GOLLVM_USE_SPLIT_STACK)
 endif()
 
 if (GOLLVM_LTO_SUPPORT)
-  list(APPEND libgo_extra_gocflags "-flto")
+  list(APPEND libgo_extra_gocflags "-flto=thin")
 endif()
 
 # Read in list of all libgo packages

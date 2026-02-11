@@ -51,7 +51,7 @@ set(matchdotsh "${libgo_scriptroot}/match.sh")
 set(cgo_extra_go_files "${cgozdefaultccdotgo}")
 
 if (GOLLVM_LTO_SUPPORT)
-  list(APPEND gotools_extra_gocflags "-flto" "-static-libgo")
+  list(APPEND gotools_extra_gocflags "-flto=thin" "-static-libgo")
 endif()
 
 # Loop over each of the tools of interest.
