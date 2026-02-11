@@ -1113,6 +1113,7 @@ func scanobject(b uintptr, gcw *gcWork) {
 		}
 	}
 	gcw.bytesMarked += uint64(n)
+        gcw.objectsMarked += 1
 	gcw.heapScanWork += int64(i)
 }
 
@@ -1138,6 +1139,7 @@ func scanstackblock(b, n uintptr, gcw *gcWork) {
 
 // scanstackblockwithmap is like scanstackblock, but with an explicit
 // pointer bitmap. This is used only when precise stack scan is enabled.
+//
 //go:linkname scanstackblockwithmap
 //go:nowritebarrier
 func scanstackblockwithmap(pc, b0, n0 uintptr, ptrmask *uint8, gcw *gcWork) {
@@ -1183,6 +1185,7 @@ func scanstackblockwithmap(pc, b0, n0 uintptr, ptrmask *uint8, gcw *gcWork) {
 // Shade the object if it isn't already.
 // The object is not nil and known to be in the heap.
 // Preemption must be disabled.
+//
 //go:nowritebarrier
 func shade(b uintptr) {
 	if obj, span, objIndex := findObject(b, 0, 0, !usestackmaps); obj != 0 {
@@ -1242,6 +1245,7 @@ func greyobject(obj, base, off uintptr, span *mspan, gcw *gcWork, objIndex uintp
 		// instead of greying it.
 		if span.spanclass.noscan() {
 			gcw.bytesMarked += uint64(span.elemsize)
+                        gcw.objectsMarked += 1
 			return
 		}
 	}
@@ -1328,6 +1332,7 @@ func gcmarknewobject(span *mspan, obj, size, scanSize uintptr) {
 
 	gcw := &getg().m.p.ptr().gcw
 	gcw.bytesMarked += uint64(size)
+        gcw.objectsMarked += 1
 	if !goexperiment.PacerRedesign {
 		// The old pacer counts newly allocated memory toward
 		// heapScanWork because heapScan is continuously updated

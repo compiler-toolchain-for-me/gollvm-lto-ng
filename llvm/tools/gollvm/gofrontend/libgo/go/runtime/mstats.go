@@ -92,6 +92,9 @@ type mstats struct {
 	// heapStats is a set of statistics
 	heapStats consistentHeapStats
 
+        // objects_marked is the number of objects marked by the previous GC
+        objects_marked uint64
+
 	// _ uint32 // ensure gcPauseDist is aligned
 
 	// gcPauseDist represents the distribution of all GC-related
@@ -229,6 +232,15 @@ type MemStats struct {
 	// decreases as the heap is swept and unreachable objects are
 	// freed.
 	HeapObjects uint64
+
+        // HeapMarked is the number of bytes marked by the previous
+        // GC. After mark termination, heap_live == heap_marked, but
+        // unlike heap_live, heap_marked does not change until the
+        // next mark termination.
+        HeapMarked uint64
+
+        // ObjectsMarked is the number of objects marked by the previous GC
+        ObjectsMarked uint64
 
 	// Stack memory statistics.
 	//
@@ -437,6 +449,11 @@ func readmemstats_m(stats *MemStats) {
 	// => heap_idle = heap_sys - heap_inuse
 	stats.HeapIdle = memstats.heap_sys.load() - memstats.heap_inuse
 	stats.HeapInuse = memstats.heap_inuse
+
+        // CoreGo Add some more statistics
+        stats.ObjectsMarked = memstats.objects_marked
+        stats.HeapMarked = gcController.heapMarked
+
 	stats.HeapReleased = memstats.heap_released
 	stats.HeapObjects = memstats.heap_objects
 	stats.StackInuse = memstats.stacks_inuse
@@ -491,6 +508,7 @@ func readGCStats(pauses *[]uint64) {
 
 // readGCStats_m must be called on the system stack because it acquires the heap
 // lock. See mheap for details.
+//
 //go:systemstack
 func readGCStats_m(pauses *[]uint64) {
 	p := *pauses
@@ -669,6 +687,7 @@ type sysMemStat uint64
 // load atomically reads the value of the stat.
 //
 // Must be nosplit as it is called in runtime initialization, e.g. newosproc0.
+//
 //go:nosplit
 func (s *sysMemStat) load() uint64 {
 	return atomic.Load64((*uint64)(s))
@@ -677,6 +696,7 @@ func (s *sysMemStat) load() uint64 {
 // add atomically adds the sysMemStat by n.
 //
 // Must be nosplit as it is called in runtime initialization, e.g. newosproc0.
+//
 //go:nosplit
 func (s *sysMemStat) add(n int64) {
 	if s == nil {

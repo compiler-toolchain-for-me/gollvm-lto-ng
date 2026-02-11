@@ -314,6 +314,9 @@ var work struct {
 	// (and thus 8-byte alignment even on 32-bit architectures).
 	bytesMarked uint64
 
+        // objectsMarked is the number of objects marked this cycle.
+        objectsMarked atomic.Uint64
+
 	markrootNext uint32 // next markroot job
 	markrootJobs uint32 // number of markroot jobs
 
@@ -759,7 +762,7 @@ var gcMarkDoneFlushed uint32
 // This should be called when all local mark work has been drained and
 // there are no remaining workers. Specifically, when
 //
-//   work.nwait == work.nproc && !gcMarkWorkAvailable(p)
+//     work.nwait == work.nproc && !gcMarkWorkAvailable(p)
 //
 // The calling context must be preemptible.
 //
@@ -1091,7 +1094,7 @@ func gcMarkTermination(nextTriggerRatio float64) {
 			work.heapGoal>>20, " MB goal, ",
 			gcController.stackScan>>20, " MB stacks, ",
 			gcController.globalsScan>>20, " MB globals, ",
-			work.maxprocs, " P")
+                        work.maxprocs, " P, ", work.objectsMarked.Load(), " marked objects")
 		if work.userForced {
 			print(" (forced)")
 		}
@@ -1439,6 +1442,7 @@ func gcMark(startTime int64) {
 		c.scanAlloc = 0
 	}
 
+        memstats.objects_marked = work.objectsMarked.Load()
 	// Reset controller state.
 	gcController.resetLive(work.bytesMarked)
 }
@@ -1529,6 +1533,7 @@ func gcResetMarkState() {
 	}
 
 	work.bytesMarked = 0
+        work.objectsMarked = atomic.Uint64{}
 	work.initialHeapLive = atomic.Load64(&gcController.heapLive)
 }
 
