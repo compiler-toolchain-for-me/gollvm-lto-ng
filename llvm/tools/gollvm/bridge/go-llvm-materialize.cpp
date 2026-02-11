@@ -1348,7 +1348,7 @@ static llvm::Value *makeGetgArm64(Btype *resType,
     // We need to clobber x0 because we have to use it to pass parameters.
     // We also only need to clobber x0, because the TLS descriptor helper
     // function only modifies x0
-    constr += "=r,~{x0}";
+    constr += "=r,~{x0},~{lr}";
     llvm::FunctionType *fnType =
         llvm::FunctionType::get(resType->type(), llvm::ArrayRef<llvm::Type*>{}, false);
     llvm::Value *callee = llvm::InlineAsm::get(fnType, llvm::StringRef(asmStr),
